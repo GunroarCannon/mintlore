@@ -143,7 +143,13 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onScanComplete }) 
         <Scanlines />
         <ScanBeam active={scanning} />
         <View style={styles.scanScreenInner}>
-          <Text style={styles.scanTitle}>MINTLORE{'\n'}SCANNER v1.0</Text>
+          <View style={styles.scanHeader}>
+            <Text style={styles.scanTitle}>MINTLORE SCANNER v1.0</Text>
+            <View style={styles.networkBadge}>
+              <View style={styles.networkDot} />
+              <Text style={styles.networkText}>MAINNET</Text>
+            </View>
+          </View>
           <View style={styles.dividerLine} />
           {scanning ? (
             <View style={styles.scanProgress}>
@@ -280,13 +286,42 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  scanHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 2,
+  },
   scanTitle: {
     fontFamily: FONTS.mono,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: COLORS.screenGreenDark,
     textAlign: 'center',
-    letterSpacing: 2,
+    letterSpacing: 1,
+  },
+  networkBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 255, 0, 0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 0, 0.3)',
+  },
+  networkDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.ledGreen,
+    marginRight: 4,
+  },
+  networkText: {
+    fontFamily: FONTS.mono,
+    fontSize: 8,
+    fontWeight: 'bold',
+    color: COLORS.screenGreenDark,
   },
   dividerLine: {
     height: 1,

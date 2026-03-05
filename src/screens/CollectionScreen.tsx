@@ -8,6 +8,8 @@ import {
   ScrollView,
   TextInput,
   Dimensions,
+  Image,
+  ImageBackground,
 } from 'react-native';
 import { CollectionScreenProps, NFT, Rarity, FilterType, SortBy } from '../types';
 import { COLORS } from '../constants/colors';
@@ -191,8 +193,24 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ nfts, wallet
         contentContainerStyle={styles.gridContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>NO NFTs FOUND{'\n'}IN SELECTED FILTER</Text>
+          <View style={styles.emptyContainer}>
+            <ImageBackground
+              source={require('../../assets/empty-state.png')}
+              style={styles.emptyBgImage}
+              imageStyle={{ opacity: 0.05, tintColor: COLORS.dexWhite }}
+              resizeMode="contain"
+            >
+              <View style={styles.emptyContent}>
+                <Text style={styles.emptyIcon}>⬡</Text>
+                <Text style={styles.emptyText}>
+                  NO NFTs DETECTED{'\n'}
+                  ON <Text style={{ color: COLORS.solanaGreen }}>MAINNET</Text>
+                </Text>
+                <Text style={styles.emptySubtext}>
+                  {search ? `Searching for "${search}"` : 'Try scanning a different wallet'}
+                </Text>
+              </View>
+            </ImageBackground>
           </View>
         }
       />
@@ -460,16 +478,42 @@ const styles = StyleSheet.create({
     right: 0,
     height: 3,
   },
-  emptyState: {
+  emptyContainer: {
+    flex: 1,
+    minHeight: 400,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 60,
+  },
+  emptyBgImage: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyContent: {
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  emptyIcon: {
+    fontSize: 40,
+    color: '#333',
+    marginBottom: 20,
   },
   emptyText: {
     fontFamily: FONTS.mono,
-    fontSize: 13,
-    color: '#555',
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#888',
     textAlign: 'center',
     letterSpacing: 1,
     lineHeight: 22,
+  },
+  emptySubtext: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: '#444',
+    marginTop: 12,
+    textAlign: 'center',
+    letterSpacing: 0.5,
   },
 });
