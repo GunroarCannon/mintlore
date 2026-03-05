@@ -5,6 +5,7 @@ import { API_KEY, RPC_ENDPOINT } from '@env';
 
 import { cacheService } from './cache.service';
 import { colorService } from './color.service';
+import { aiService } from './ai.service';
 
 // Define Helius asset type locally for the DAS API response
 interface HeliusAsset {
@@ -188,17 +189,30 @@ export class HeliusService {
       const normalizeUrl = this.normalizeImageUrl(imageUrl);
       const { type1, type2 } = await this.mapToPokemonType(attributes, metadata.name, normalizeUrl);
 
+      // Randomize rarity if common or not set
+      let rarity = asset.supply?.print_max_supply < 100 ? 'rare' : 'common';
+      rarity = this.getWeightedRandomRarity();
+
+      const baseDescription = metadata.description || 'No description available';
+      const aiDescription = await aiService.getNFTDescription(
+        metadata.name || 'Unnamed',
+        type1,
+        type2,
+        rarity as Rarity,
+        baseDescription
+      );
+
       const nft: NFT = {
         id: asset.id,
         mintAddress: asset.id,
         name: metadata.name || 'Unnamed NFT',
         collection: collectionId,
         image: normalizeUrl,
-        rarity: 'common',
+        rarity: rarity as Rarity,
         type1: type1,
         type2: type2,
         number: this.extractNumber(metadata.name),
-        description: metadata.description || 'No description available',
+        description: aiDescription,
         attributes: attributes,
         floorPrice: 0,
         lastSale: 0,
@@ -393,6 +407,27 @@ export class HeliusService {
     } catch {
       return [];
     }
+  }
+
+  private getWeightedRandomRarity(): Rarity {
+    const weights = {
+      legendary: 1,
+      epic: 50,
+      rare: 400,
+      uncommon: 700,
+      common: 1000
+    };
+
+    const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
+    const random = Math.random() * totalWeight;
+
+    let cumulative = 0;
+    for (const [rarity, weight] of Object.entries(weights)) {
+      cumulative += weight;
+      if (random < cumulative) return rarity as Rarity;
+    }
+
+    return 'common';
   }
 
   private getErrorNFT(id: string, owner: string): NFT {

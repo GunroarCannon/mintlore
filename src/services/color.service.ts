@@ -63,13 +63,20 @@ export class ColorService {
      * until a more complex WebView bridge is requested.
      */
     public async getDominantColor(uri: string): Promise<string> {
+        console.log(`[ColorService] Sampling image: ${uri}`);
+
         // Deterministic "dominant" color based on filename for now
         const hash = uri.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+        console.log(`[ColorService] Calculated uri-hash: ${hash}`);
+
         const r = (hash * 123) % 255;
         const g = (hash * 456) % 255;
         const b = (hash * 789) % 255;
 
-        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+        const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+        console.log(`[ColorService] Final dominant color: ${hex}`);
+
+        return hex;
     }
 }
 

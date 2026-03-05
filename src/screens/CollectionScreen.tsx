@@ -194,10 +194,28 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ nfts, wallet
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
+            {/* Hexagon Pattern Background */}
+            <View style={styles.hexagonGrid}>
+              {[...Array(6)].map((_, i) => (
+                <Image
+                  key={i}
+                  source={require('../../assets/hexagon.png')}
+                  style={[
+                    styles.bgHexagon,
+                    {
+                      top: 100 + (i * 40),
+                      left: 50 + (i * 30),
+                      transform: [{ scale: 0.5 + (i * 0.1) }, { rotate: `${i * 45}deg` }]
+                    }
+                  ]}
+                />
+              ))}
+            </View>
+
             <ImageBackground
               source={require('../../assets/empty-state.png')}
               style={styles.emptyBgImage}
-              imageStyle={{ opacity: 0.05, tintColor: COLORS.dexWhite }}
+              imageStyle={{ opacity: 0.15, tintColor: COLORS.dexWhite }}
               resizeMode="contain"
             >
               <View style={styles.emptyContent}>
@@ -480,30 +498,54 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     flex: 1,
-    minHeight: 400,
+    minHeight: 500,
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  hexagonGrid: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0.1,
+  },
+  bgHexagon: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    tintColor: COLORS.dexWhite,
   },
   emptyBgImage: {
-    width: '100%',
-    height: '100%',
+    width: 250,
+    height: 250,
     justifyContent: 'center',
     alignItems: 'center',
   },
   emptyContent: {
     alignItems: 'center',
-    paddingHorizontal: 40,
+    paddingHorizontal: 20,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    padding: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   emptyIcon: {
     fontSize: 40,
-    color: '#333',
-    marginBottom: 20,
+    color: COLORS.solanaGreen,
+    marginBottom: 10,
+    textShadowColor: COLORS.solanaGreen,
+    textShadowRadius: 10,
+    textShadowOffset: { width: 0, height: 0 },
   },
   emptyText: {
     fontFamily: FONTS.mono,
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#888',
+    color: '#DDD',
     textAlign: 'center',
     letterSpacing: 1,
     lineHeight: 22,
@@ -511,7 +553,7 @@ const styles = StyleSheet.create({
   emptySubtext: {
     fontFamily: FONTS.mono,
     fontSize: 10,
-    color: '#444',
+    color: '#888',
     marginTop: 12,
     textAlign: 'center',
     letterSpacing: 0.5,
