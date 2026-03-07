@@ -30,7 +30,9 @@
     },
     "plugins": [
       "expo-font",
-      "expo-asset"
+      "expo-asset",
+      "expo-av",
+      "expo-file-system"
     ]
   }
 }

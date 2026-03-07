@@ -15,7 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
 const CHAIN = "solana";
-const CLUSTER = "devnet";
+const CLUSTER = "mainnet-beta";
 const CHAIN_IDENTIFIER = `${CHAIN}:${CLUSTER}`;
 
 export type Account = Readonly<{

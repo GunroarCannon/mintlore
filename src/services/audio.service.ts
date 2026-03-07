@@ -70,12 +70,18 @@ class AudioService {
     async init() {
         if (this.initialized) return;
         try {
+            console.log('[AudioService] Initializing audio mode...');
+            if (!Audio || !Audio.setAudioModeAsync) {
+                console.error('[AudioService] Expo AV module not found or incorrectly linked!');
+                return;
+            }
             await Audio.setAudioModeAsync({
                 playsInSilentModeIOS: true,
                 staysActiveInBackground: false,
                 shouldDuckAndroid: true,
             });
             this.initialized = true;
+            console.log('[AudioService] Initialization successful.');
         } catch (e) {
             console.warn('[AudioService] Init failed:', e);
         }
@@ -84,7 +90,11 @@ class AudioService {
     private async playSound(source: any, volume: number = 0.5): Promise<Sound | null> {
         try {
             await this.init();
+            if (!this.initialized) return null;
+
+            console.log('[AudioService] Creating sound for source:', typeof source === 'number' ? 'ResId ' + source : 'URI');
             const { sound } = await Audio.Sound.createAsync(source, { volume, shouldPlay: true });
+
             // Auto-unload when done
             sound.setOnPlaybackStatusUpdate((status) => {
                 if (status.isLoaded && status.didJustFinish) {

@@ -309,7 +309,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onScanComplete, on
         </View>
       </View>
 
-      <Text style={styles.solanaWatermark}>POWERED BY SOLANA</Text>
+      <Text style={styles.solanaWatermark}>POWERED BY WAKUWAKU</Text>
     </View>
   );
 };
@@ -525,7 +525,8 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: COLORS.dexWhite + '55',
     letterSpacing: 2,
-    marginTop: 4,
+    position: 'absolute',
+    bottom: 50,
   },
   errorContainer: {
     backgroundColor: COLORS.ledRed + '22',
