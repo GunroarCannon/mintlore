@@ -141,7 +141,12 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ nfts, wallet
         />
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 4 }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterScroll}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8 }}
+      >
         {filters.map(f => {
           const isActive = filter === f;
           return (
@@ -176,15 +181,32 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ nfts, wallet
       </ScrollView>
 
       <View style={styles.sortRow}>
-        <Text style={styles.sortLabel}>SORT:</Text>
-        {sorts.map(s => (
-          <TouchableOpacity key={s} onPress={() => setSortBy(s)} style={[styles.sortBtn, sortBy === s && styles.sortBtnActive]}>
-            <Text style={[styles.sortBtnText, sortBy === s && { color: COLORS.dexRedLight }]}>{s.toUpperCase()}</Text>
-          </TouchableOpacity>
-        ))}
+        <Text style={styles.sortLabel}>SORT BY:</Text>
+        <View style={styles.sortOptionsContainer}>
+          {sorts.map(s => {
+            const isActive = sortBy === s;
+            return (
+              <TouchableOpacity
+                key={s}
+                onPress={() => setSortBy(s)}
+                style={[styles.sortBtnFrame, isActive && styles.sortBtnFrameActive]}
+                activeOpacity={0.8}
+              >
+                {/* Engraved Effect Background */}
+                <View style={[styles.sortBtnEngrave, isActive && styles.sortBtnEngraveActive]} />
+                <View style={[styles.sortBtnFace, isActive && styles.sortBtnFaceActive]}>
+                  <Text style={[styles.sortBtnText, isActive && styles.sortBtnTextActive]}>
+                    {s.toUpperCase()}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
       <FlatList
+        style={{ flex: 1 }}
         data={displayed}
         keyExtractor={i => i.id}
         renderItem={renderNftCard}
@@ -215,7 +237,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ nfts, wallet
             <ImageBackground
               source={require('../../assets/empty-state.png')}
               style={styles.emptyBgImage}
-              imageStyle={{ opacity: 0.15, tintColor: COLORS.dexWhite }}
+              imageStyle={{ opacity: 0.35, tintColor: COLORS.dexWhite }}
               resizeMode="contain"
             >
               <View style={styles.emptyContent}>
@@ -331,7 +353,8 @@ const styles = StyleSheet.create({
   },
   filterScroll: {
     marginBottom: 6,
-    maxHeight: 46,
+    maxHeight: 52,
+    zIndex: 20,
   },
   filterBtnContainer: {
     marginRight: 8,
@@ -391,22 +414,56 @@ const styles = StyleSheet.create({
     color: '#888',
     letterSpacing: 1,
   },
-  sortBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 3,
-    borderWidth: 1,
-    borderColor: '#333',
+  sortOptionsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    flex: 1,
   },
-  sortBtnActive: {
-    borderColor: COLORS.dexRedLight + '88',
+  sortBtnFrame: {
+    flex: 1,
+    height: 28,
+    backgroundColor: '#1A1A1A', // Darker well
+    borderRadius: 4,
+    padding: 1,
+    overflow: 'hidden',
+  },
+  sortBtnFrameActive: {
+    borderColor: COLORS.dexRedDark,
+  },
+  sortBtnEngrave: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000',
+    opacity: 0.5,
+  },
+  sortBtnEngraveActive: {
+    opacity: 0.8,
     backgroundColor: COLORS.dexBlack,
+  },
+  sortBtnFace: {
+    flex: 1,
+    backgroundColor: '#222',
+    borderRadius: 3,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#111', // Top shadow
+    borderLeftWidth: 1,
+    borderLeftColor: '#111',
+  },
+  sortBtnFaceActive: {
+    backgroundColor: COLORS.dexBlack,
+    borderTopColor: '#000',
+    borderLeftColor: '#000',
   },
   sortBtnText: {
     fontFamily: FONTS.mono,
-    fontSize: 8,
-    color: '#666',
-    letterSpacing: 1,
+    fontSize: 7.5,
+    color: '#555',
+    letterSpacing: 0.5,
+    fontWeight: 'bold',
+  },
+  sortBtnTextActive: {
+    color: COLORS.dexRedLight,
   },
   gridRow: {
     justifyContent: 'space-between',
@@ -510,7 +567,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    opacity: 0.1,
+    opacity: 0.25,
   },
   bgHexagon: {
     position: 'absolute',

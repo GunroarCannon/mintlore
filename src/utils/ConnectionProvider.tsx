@@ -1,4 +1,4 @@
-import { Connection, type ConnectionConfig } from "@solana/web3.js";
+import { Connection, clusterApiUrl, type ConnectionConfig } from "@solana/web3.js";
 import React, {
   type FC,
   type ReactNode,
@@ -6,22 +6,23 @@ import React, {
   createContext,
   useContext,
 } from "react";
-import { useCluster } from "../components/cluster/cluster-data-access";
+
+const RPC_ENDPOINT = process.env.HELIUS_RPC_URL || clusterApiUrl("mainnet-beta");
 
 export interface ConnectionProviderProps {
   children: ReactNode;
+  endpoint?: string;
   config?: ConnectionConfig;
 }
 
 export const ConnectionProvider: FC<ConnectionProviderProps> = ({
   children,
+  endpoint = RPC_ENDPOINT,
   config = { commitment: "confirmed" },
 }) => {
-  const { selectedCluster } = useCluster();
-
   const connection = useMemo(
-    () => new Connection(selectedCluster.endpoint, config),
-    [selectedCluster, config]
+    () => new Connection(endpoint, config),
+    [endpoint, config]
   );
 
   return (

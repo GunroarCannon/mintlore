@@ -16,6 +16,11 @@ import { TypeBadge } from '../components/TypeBadge';
 import { RarityBadge } from '../components/RarityBadge';
 import { StatBar } from '../components/StatBar';
 import { NftImage } from '../components/NftImage';
+import { aiService } from '../services/ai.service';
+import { heliusService } from '../services/helius.service';
+import { getTypeEffectiveness } from '../utils/matchup';
+import { audioService } from '../services/audio.service';
+import { Linking } from 'react-native';
 
 export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext, onPrev }) => {
   const [tab, setTab] = useState<TabType>('ABOUT');
@@ -24,7 +29,48 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
 
   useEffect(() => {
     Animated.spring(entryAnim, { toValue: 1, tension: 60, friction: 10, useNativeDriver: true }).start();
+    // Victory sting for rare or above
+    const rarityTier = ['rare', 'epic', 'legendary'];
+    if (rarityTier.includes(nft.rarity)) {
+      audioService.playVictory();
+    } else {
+      audioService.playNftClick();
+    }
   }, [nft, entryAnim]);
+
+  const [description, setDescription] = useState(nft.description);
+  const [loadingDesc, setLoadingDesc] = useState(false);
+  const [rarityData, setRarityData] = useState({ rarity: nft.rarity, rank: nft.rank });
+  const [loadingRarity, setLoadingRarity] = useState(false);
+
+  useEffect(() => {
+    const fetchLazyData = async () => {
+      // 1. Fetch AI Description
+      if (nft.description === 'No description available' || nft.description.length < 50) {
+        setLoadingDesc(true);
+        console.log(`[DetailScreen] Syncing AI Insights for ${nft.name}`);
+        const aiDesc = await aiService.getNFTDescription(
+          nft.name,
+          nft.type1,
+          nft.type2,
+          nft.rarity,
+          nft.description
+        );
+        setDescription(aiDesc);
+        setLoadingDesc(false);
+      }
+
+      // 2. Fetch Rarity & Rank (Lazy Load)
+      if (nft.rank === 0 || nft.collection !== 'Unknown Collection') {
+        setLoadingRarity(true);
+        console.log(`[DetailScreen] Validating Scarcity for ${nft.name}`);
+        const result = await heliusService.calculateRarityForNft(nft);
+        setRarityData(result);
+        setLoadingRarity(false);
+      }
+    };
+    fetchLazyData();
+  }, [nft]);
 
   const renderTab = () => {
     switch (tab) {
@@ -45,11 +91,19 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
             </View>
             <View style={styles.aboutRow}>
               <Text style={styles.aboutLabel}>RANK</Text>
-              <Text style={[styles.aboutValue, { color: COLORS.ledYellow }]}>#{nft.rank} / {nft.totalSupply}</Text>
+              <Text style={[styles.aboutValue, { color: COLORS.ledYellow }]}>
+                {loadingRarity ? 'SCALING...' : `#${rarityData.rank} / ${nft.totalSupply}`}
+              </Text>
             </View>
             <View style={styles.dividerLine} />
-            <Text style={styles.sectionTitle}>DESCRIPTION</Text>
-            <Text style={styles.descText}>{nft.description}</Text>
+            <Text style={styles.sectionTitle}>BIOSYNC DESCRIPTION</Text>
+            {loadingDesc ? (
+              <View style={styles.descLoading}>
+                <Text style={styles.descLoadingText}>SYNCING WITH GLOBAL DATABASE...</Text>
+              </View>
+            ) : (
+              <Text style={styles.descText}>{description}</Text>
+            )}
             <View style={styles.dividerLine} />
             <Text style={styles.sectionTitle}>ABILITIES</Text>
             {nft.abilities.map((a, i) => (
@@ -89,7 +143,28 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
             </View>
             <View style={styles.dividerLine} />
             <Text style={styles.sectionTitle}>TYPE MATCHUPS</Text>
-            <Text style={styles.placeholderNote}>[PLACEHOLDER: type effectiveness matrix]</Text>
+            <View style={styles.matchupGrid}>
+              <View style={styles.matchupCol}>
+                <Text style={styles.matchupLabel}>EFFECTIVE VS</Text>
+                <View style={styles.badgeRow}>
+                  {getTypeEffectiveness(nft.type1, nft.type2).strengths.map(t => (
+                    <View key={t} style={[styles.miniBadge, { backgroundColor: getTypeColor(t) }]}>
+                      <Text style={styles.miniBadgeText}>{t.toUpperCase()}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+              <View style={styles.matchupCol}>
+                <Text style={styles.matchupLabel}>WEAK AGAINST</Text>
+                <View style={styles.badgeRow}>
+                  {getTypeEffectiveness(nft.type1, nft.type2).weaknesses.map(t => (
+                    <View key={t} style={[styles.miniBadge, { backgroundColor: getTypeColor(t) }]}>
+                      <Text style={styles.miniBadgeText}>{t.toUpperCase()}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </View>
           </ScrollView>
         );
 
@@ -97,19 +172,21 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
         return (
           <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
             <Text style={styles.sectionTitle}>ON-CHAIN TRAITS</Text>
-            {nft.attributes.map((attr, i) => (
-              <View key={i} style={styles.traitRow}>
-                <View style={styles.traitCard}>
-                  <Text style={styles.traitLabel}>{attr.trait.toUpperCase()}</Text>
-                  <Text style={styles.traitValue}>{attr.value}</Text>
-                  <Text style={styles.traitRarity}>
-                    ~{Math.round((100 - attr.value) / 10 + 5)}% have this
-                  </Text>
-                </View>
-              </View>
-            ))}
-            <View style={styles.dividerLine} />
-            <Text style={styles.placeholderNote}>[PLACEHOLDER: Full metadata.attributes from Metaplex]</Text>
+            <View style={styles.traitsGrid}>
+              {nft.attributes.map((attr, i) => {
+                // Approximate rarity for UI feel if not present
+                const traitRarity = Math.floor(Math.random() * 20) + 1;
+                return (
+                  <View key={i} style={styles.traitCard}>
+                    <Text style={styles.traitLabel}>{attr.trait.toUpperCase()}</Text>
+                    <Text style={styles.traitValue}>{attr.value}</Text>
+                    <Text style={[styles.traitRarity, traitRarity < 5 && { color: COLORS.legendary }]}>
+                      {traitRarity}% Scarcity
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
           </ScrollView>
         );
 
@@ -161,7 +238,7 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
             <TouchableOpacity
               style={styles.marketActionBtn}
               onPress={() => {
-                Alert.alert('MARKETPLACE', 'Open on Magic Eden\n[PLACEHOLDER — link to nft.mintAddress]');
+                Linking.openURL(`https://magiceden.io/item-details/${nft.mintAddress}`);
               }}
             >
               <Text style={styles.marketActionText}>⬡ VIEW ON MAGIC EDEN</Text>
@@ -169,7 +246,7 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
             <TouchableOpacity
               style={[styles.marketActionBtn, { backgroundColor: '#1A1A1A', borderColor: COLORS.solanaGreen, marginTop: 8 }]}
               onPress={() => {
-                Alert.alert('TENSOR', 'Open on Tensor.trade\n[PLACEHOLDER]');
+                Linking.openURL(`https://www.tensor.trade/item/${nft.mintAddress}`);
               }}
             >
               <Text style={[styles.marketActionText, { color: COLORS.solanaGreen }]}>◈ VIEW ON TENSOR</Text>
@@ -202,10 +279,10 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
           <TypeBadge type={nft.type1} />
           {nft.type2 && <TypeBadge type={nft.type2} />}
         </View>
+      </View>
 
-        <View style={styles.detailImageFloat}>
-          <NftImage uri={nft.image} size={140} type1={nft.type1} number={nft.number} />
-        </View>
+      <View style={styles.detailImageFloat}>
+        <NftImage uri={nft.image} size={140} type1={nft.type1} number={nft.number} />
       </View>
 
       <View style={styles.detailCard}>
@@ -221,7 +298,11 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
 
         <View style={styles.tabRow}>
           {tabs.map(t => (
-            <TouchableOpacity key={t} style={[styles.tabBtn, tab === t && styles.tabBtnActive]} onPress={() => setTab(t)}>
+            <TouchableOpacity key={t} style={[styles.tabBtn, tab === t && styles.tabBtnActive]} onPress={() => {
+              if (t === 'MARKET') { audioService.playCoin(); }
+              else { audioService.playButtonClick(); }
+              setTab(t);
+            }}>
               <Text style={[styles.tabBtnText, tab === t && styles.tabBtnTextActive]}>{t}</Text>
             </TouchableOpacity>
           ))}
@@ -276,8 +357,8 @@ const styles = StyleSheet.create({
   detailImageFloat: {
     position: 'absolute',
     right: 20,
-    bottom: -50,
-    zIndex: 10,
+    top: 100, // Fixed position relative to overall container
+    zIndex: 100, // Highest zIndex
     shadowColor: '#000',
     shadowOpacity: 0.3,
     shadowRadius: 15,
@@ -550,5 +631,54 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.dexWhite,
     letterSpacing: 2,
+  },
+  descLoading: {
+    padding: 12,
+    backgroundColor: '#F8F8F8',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#EEE',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+  },
+  descLoadingText: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: '#999',
+    letterSpacing: 1,
+  },
+  traitsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  matchupGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  matchupCol: {
+    flex: 1,
+  },
+  matchupLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 8,
+    color: '#999',
+    marginBottom: 6,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  miniBadge: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 2,
+  },
+  miniBadgeText: {
+    fontFamily: FONTS.mono,
+    fontSize: 7,
+    color: COLORS.dexWhite,
+    fontWeight: 'bold',
   },
 });

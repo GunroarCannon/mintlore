@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,8 @@ import { ScannerScreenProps } from '../types';
 import { COLORS } from '../constants/colors';
 import { FONTS } from '../constants/fonts';
 import { heliusService } from '../services/helius.service';
+import { useMobileWallet } from '../utils/useMobileWallet';
+import { audioService } from '../services/audio.service';
 
 import { MOCK_WALLET, MOCK_NFTS } from '../data/mockData';
 
@@ -23,12 +25,21 @@ import { ScanBeam } from '../components/ScanBeam';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
-export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onScanComplete }) => {
+export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onScanComplete, onOpenDiscovered, onOpenQRScan }) => {
+  const { connect } = useMobileWallet();
   const [walletInput, setWalletInput] = useState('');
   const [scanning, setScanning] = useState(false);
   const [scanPhase, setScanPhase] = useState('');
   const [connected, setConnected] = useState(false);
-  const [error, setError] = useState("")
+  const [error, setError] = useState('');
+  const [musicTrack, setMusicTrack] = useState(audioService.getCurrentTrackName());
+  const [musicOn, setMusicOn] = useState(false);
+
+  // Start default music on mount
+  useEffect(() => {
+    audioService.startMusic().then(() => setMusicOn(true));
+    return () => { audioService.stopMusic(); };
+  }, []);
 
   const phases = [
     'INITIALIZING RPC NODE...',
@@ -41,43 +52,17 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onScanComplete }) 
     'SCAN COMPLETE!',
   ];
 
-  const placeHolderStartScan = useCallback(async () => {
-    const addr = walletInput.trim() || MOCK_WALLET;
-    setScanning(true);
-
-    for (let i = 0; i < phases.length; i++) {
-      setScanPhase(phases[i]);
-      await new Promise(r => setTimeout(r, 400));
-    }
-
-    setScanning(false);
-    setConnected(true);
-    setTimeout(() => onScanComplete(MOCK_NFTS, addr), 600);
-  }, [walletInput, onScanComplete]);
-
-
   const validateWalletAddress = (address: string): boolean => {
     // Basic Solana address validation (base58, 32-44 chars)
     const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
     return base58Regex.test(address.trim());
   };
 
-  const startScan = useCallback(async () => {
-    const addr = walletInput.trim();
-
-    if (!addr) {
-      setError('Please enter a wallet address');
-      return;
-    }
-
-    if (!validateWalletAddress(addr)) {
-      setError('Invalid Solana wallet address');
-      return;
-    }
-
+  const executeScan = async (addr: string) => {
     setError('');
     setScanning(true);
     setScanPhase(phases[0]);
+    await audioService.startScanLoop();
 
     try {
       // Simulate phases for UX
@@ -91,6 +76,8 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onScanComplete }) 
       const nfts = await heliusService.scanWallet(addr, undefined, true);
 
       setScanPhase('SCAN COMPLETE!');
+      await audioService.stopScanLoop();
+      await audioService.playScannerOpen();
 
       // Small delay for UX
       await new Promise(r => setTimeout(r, 500));
@@ -98,15 +85,54 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onScanComplete }) 
       onScanComplete(nfts, addr);
     } catch (error: any) {
       console.error('Scan failed:', error);
+      await audioService.stopScanLoop();
+      await audioService.playError();
       setError(error.message || 'Failed to scan wallet');
       setScanning(false);
     }
+  };
+
+  const startScan = useCallback(async () => {
+    const addr = walletInput.trim();
+
+    if (!addr) {
+      setError('Please enter a wallet address');
+      audioService.playError();
+      return;
+    }
+
+    if (!validateWalletAddress(addr)) {
+      setError('Invalid Solana wallet address');
+      audioService.playError();
+      return;
+    }
+    audioService.playScanWallet();
+
+    await executeScan(addr);
   }, [walletInput, onScanComplete]);
 
-
+  const handleMWAConnect = useCallback(async () => {
+    try {
+      setError('');
+      audioService.playConnectWallet();
+      const account = await connect();
+      if (account) {
+        const addr = account.publicKey.toBase58();
+        setWalletInput(addr);
+        setConnected(true);
+        // Automatically start scan after connection
+        await executeScan(addr);
+      }
+    } catch (err: any) {
+      console.error('MWA Error:', err);
+      setError(err.message || 'MWA connection cancelled');
+    }
+  }, [connect, onScanComplete]);
 
   const scanPressAnim = useRef(new Animated.Value(0)).current;
   const mwaPressAnim = useRef(new Animated.Value(0)).current;
+  const qrPressAnim = useRef(new Animated.Value(0)).current;
+  const discPressAnim = useRef(new Animated.Value(0)).current;
 
   const animatePress = (anim: Animated.Value, toValue: number) => {
     Animated.spring(anim, {
@@ -120,18 +146,32 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onScanComplete }) 
   return (
     <View style={styles.scannerScreen}>
 
-      {error ? (
+      {/* {error ? (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
         </View>
-      ) : null}
+      ) : null} */}
       <View style={styles.dexHinge} />
 
-      <View style={styles.bigLedRing}>
+      <TouchableOpacity
+        style={styles.bigLedRing}
+        onPress={async () => {
+          audioService.playButtonClick();
+          const trackName = await audioService.nextTrack();
+          setMusicTrack(trackName);
+          if (!musicOn) { setMusicOn(true); }
+        }}
+        onLongPress={async () => {
+          const playing = await audioService.toggleMusic();
+          setMusicOn(playing);
+        }}
+        activeOpacity={0.7}
+      >
         <View style={[styles.bigLed, { backgroundColor: connected ? COLORS.ledGreen : scanning ? COLORS.ledYellow : COLORS.ledRed }]}>
-          <LedDot color={connected ? COLORS.ledGreen : scanning ? COLORS.ledYellow : COLORS.ledRed} size={30} pulsing={scanning} />
+          <LedDot color={connected ? COLORS.ledGreen : scanning ? COLORS.ledYellow : COLORS.ledRed} size={30} pulsing={scanning || musicOn} />
         </View>
-      </View>
+      </TouchableOpacity>
+      {/* {musicOn && <Text style={styles.musicLabel}>♪ {musicTrack}</Text>} */}
 
       <View style={styles.ledRow}>
         <LedDot color={COLORS.ledRed} size={14} />
@@ -151,7 +191,9 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onScanComplete }) 
             </View>
           </View>
           <View style={styles.dividerLine} />
-          {scanning ? (
+          {error ? (
+            <Text style={styles.scanError}>{error}</Text>
+          ) : scanning ? (
             <View style={styles.scanProgress}>
               <ActivityIndicator color={COLORS.ledGreen} size="small" />
               <Text style={styles.scanPhaseText}>{scanPhase}</Text>
@@ -182,46 +224,88 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onScanComplete }) 
         />
       </View>
 
-      <View style={styles.buttonRow}>
-        <View style={styles.btn3DContainer}>
-          <View style={[styles.btn3DBase, { backgroundColor: COLORS.dexRedDark }]} />
-          <TouchableOpacity
-            activeOpacity={1}
-            onPressIn={() => animatePress(scanPressAnim, 4)}
-            onPressOut={() => animatePress(scanPressAnim, 0)}
-            onPress={startScan}
-            disabled={scanning}
-            style={{ flex: 1 }}
-          >
-            <Animated.View style={[
-              styles.dexButton,
-              styles.dexButtonPrimary,
-              { transform: [{ translateY: scanPressAnim }] }
-            ]}>
-              <Text style={styles.dexButtonText}>{scanning ? 'SCANNING...' : '◉ SCAN WALLET'}</Text>
-            </Animated.View>
-          </TouchableOpacity>
+      <View style={styles.buttonGrid}>
+        <View style={styles.buttonRow}>
+          <View style={styles.btn3DContainer}>
+            <View style={[styles.btn3DBase, { backgroundColor: COLORS.dexRedDark }]} />
+            <TouchableOpacity
+              activeOpacity={1}
+              onPressIn={() => animatePress(scanPressAnim, 4)}
+              onPressOut={() => animatePress(scanPressAnim, 0)}
+              onPress={startScan}
+              disabled={scanning}
+              style={{ flex: 1 }}
+            >
+              <Animated.View style={[
+                styles.dexButton,
+                styles.dexButtonPrimary,
+                { transform: [{ translateY: scanPressAnim }] }
+              ]}>
+                <Text style={styles.dexButtonText}>{scanning ? 'SCANNING...' : '◉ SCAN WALLET'}</Text>
+              </Animated.View>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.btn3DContainer}>
+            <View style={[styles.btn3DBase, { backgroundColor: '#111' }]} />
+            <TouchableOpacity
+              activeOpacity={1}
+              onPressIn={() => animatePress(mwaPressAnim, 4)}
+              onPressOut={() => animatePress(mwaPressAnim, 0)}
+              onPress={handleMWAConnect}
+              disabled={scanning}
+              style={{ flex: 1 }}
+            >
+              <Animated.View style={[
+                styles.dexButton,
+                styles.dexButtonSecondary,
+                { transform: [{ translateY: mwaPressAnim }] }
+              ]}>
+                <Text style={[styles.dexButtonText, { color: COLORS.solanaGreen }]}>⬡ CONNECT MWA</Text>
+              </Animated.View>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <View style={styles.btn3DContainer}>
-          <View style={[styles.btn3DBase, { backgroundColor: '#111' }]} />
-          <TouchableOpacity
-            activeOpacity={1}
-            onPressIn={() => animatePress(mwaPressAnim, 4)}
-            onPressOut={() => animatePress(mwaPressAnim, 0)}
-            onPress={() => {
-              Alert.alert('CONNECT WALLET', 'Mobile Wallet Adapter integration\n[PLACEHOLDER — install @solana-mobile/wallet-adapter-react]');
-            }}
-            style={{ flex: 1 }}
-          >
-            <Animated.View style={[
-              styles.dexButton,
-              styles.dexButtonSecondary,
-              { transform: [{ translateY: mwaPressAnim }] }
-            ]}>
-              <Text style={[styles.dexButtonText, { color: COLORS.solanaGreen }]}>⬡ CONNECT MWA</Text>
-            </Animated.View>
-          </TouchableOpacity>
+        <View style={styles.buttonRow}>
+          <View style={styles.btn3DContainer}>
+            <View style={[styles.btn3DBase, { backgroundColor: '#111' }]} />
+            <TouchableOpacity
+              activeOpacity={1}
+              onPressIn={() => animatePress(qrPressAnim, 4)}
+              onPressOut={() => animatePress(qrPressAnim, 0)}
+              onPress={() => { audioService.playButtonClick(); onOpenQRScan(); }}
+              disabled={scanning}
+              style={{ flex: 1 }}
+            >
+              <Animated.View style={[
+                styles.dexButton,
+                styles.dexButtonTertiary,
+                { transform: [{ translateY: qrPressAnim }] }
+              ]}>
+                <Text style={[styles.dexButtonText, { color: COLORS.ledBlue }]}> SCAN QR CODE</Text>
+              </Animated.View>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.btn3DContainer}>
+            <View style={[styles.btn3DBase, { backgroundColor: COLORS.dexGrey }]} />
+            <TouchableOpacity
+              activeOpacity={1}
+              onPressIn={() => animatePress(discPressAnim, 4)}
+              onPressOut={() => animatePress(discPressAnim, 0)}
+              onPress={() => { audioService.playDiscoveryOpen(); onOpenDiscovered(); }}
+              disabled={scanning}
+              style={{ flex: 1 }}
+            >
+              <Animated.View style={[
+                styles.dexButton,
+                { backgroundColor: COLORS.dexGrey, borderColor: '#444', transform: [{ translateY: discPressAnim }] }
+              ]}>
+                <Text style={styles.dexButtonText}>DISCOVERED</Text>
+              </Animated.View>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -346,6 +430,12 @@ const styles = StyleSheet.create({
     color: COLORS.screenGreenDark + 'AA',
     textAlign: 'center',
   },
+  scanError: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: COLORS.dexRedDark,
+    textAlign: 'center',
+  },
   progressDots: {
     flexDirection: 'row',
     gap: 6,
@@ -378,11 +468,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     letterSpacing: 1,
   },
+  buttonGrid: {
+    width: SCREEN_W - 40,
+    gap: 12,
+    marginBottom: 16,
+  },
   buttonRow: {
     flexDirection: 'row',
     gap: 12,
-    width: SCREEN_W - 40,
-    marginBottom: 16,
   },
   btn3DContainer: {
     flex: 1,
@@ -415,9 +508,14 @@ const styles = StyleSheet.create({
     borderColor: COLORS.solanaGreen,
     borderTopWidth: 1,
   },
+  dexButtonTertiary: {
+    borderColor: COLORS.ledBlue,
+    borderTopWidth: 1,
+  },
   dexButtonText: {
     fontFamily: FONTS.mono,
-    fontSize: 11,
+    fontSize: 10,
+    textAlign: 'center',
     fontWeight: 'bold',
     color: COLORS.dexWhite,
     letterSpacing: 1,
@@ -443,5 +541,15 @@ const styles = StyleSheet.create({
     color: COLORS.ledRed,
     fontSize: 11,
     textAlign: 'center',
-  }
+  },
+  musicLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 8,
+    color: COLORS.ledGreen,
+    textAlign: 'center',
+    marginTop: 2,
+    letterSpacing: 1,
+    textShadowColor: COLORS.ledGreen,
+    textShadowRadius: 4,
+  },
 });

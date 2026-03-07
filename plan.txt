@@ -1,0 +1,11 @@
+This is for solana mobile hacakthon, so I want the player to be able to login from mwa as well as from pasting. As well as also scan qr code. The Ui should still be retro and minimalistic like a pokedex. Mintlore should also store discovered NFTs and lore, like a pokedex. maybe a section for discovered. It means it can also be usable without a wallet or without an active wallet. There should be a way to share NFTs in lore with a qr code that another user can scan to discover all the nfts you have
+
+use power_up_0 for scanned screen popping up
+power_up_02 for discovery screen popping up
+use power_up_03 and retro_coin_02 (selected randomly)for scanning (loops until scan is done)   
+power_up_04. power_up_05, Slide_Electronic_02 and power_up_06 randomly for clciking on nft
+use synth_beep_02 for when error hppens (no wallett address for example)
+
+Slide_Electronic_00 for click on connect wallet with wallet Adapter
+Slide_Electronic_01 for scan wallet when no wallet address or is invalid
+Click_Electronic_00, Click_Electronic_04, Click_Electronic_07, Click_Electronic_09, Click_Electronic_13, Click_Electronic_14 randomly for other button click

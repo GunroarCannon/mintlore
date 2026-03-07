@@ -14,7 +14,7 @@ interface HeliusAsset {
     metadata: {
       name: string;
       symbol: string;
-      description: string;
+      description?: string;
       attributes?: Array<{
         trait_type: string;
         value: string | number;
@@ -126,14 +126,6 @@ export class HeliusService {
         });
       }
 
-      // Calculate rarity with cached collection data
-      const collections = this.groupByCollection(nfts);
-      await Promise.all(
-        Object.entries(collections).map(([collectionId, collectionNfts]) =>
-          this.enrichWithRarity(collectionNfts, collectionId)
-        )
-      );
-
       onProgress?.({
         phase: 'COMPLETE',
         current: assets.length,
@@ -194,13 +186,6 @@ export class HeliusService {
       rarity = this.getWeightedRandomRarity();
 
       const baseDescription = metadata.description || 'No description available';
-      const aiDescription = await aiService.getNFTDescription(
-        metadata.name || 'Unnamed',
-        type1,
-        type2,
-        rarity as Rarity,
-        baseDescription
-      );
 
       const nft: NFT = {
         id: asset.id,
@@ -212,7 +197,7 @@ export class HeliusService {
         type1: type1,
         type2: type2,
         number: this.extractNumber(metadata.name),
-        description: aiDescription,
+        description: baseDescription,
         attributes: attributes,
         floorPrice: 0,
         lastSale: 0,
@@ -362,6 +347,51 @@ export class HeliusService {
       const sorted = [...collectionNfts].sort((a, b) => this.calculateRarityScore(b) - this.calculateRarityScore(a));
       nft.rank = sorted.findIndex(n => n.id === nft.id) + 1;
     }
+  }
+
+  public async calculateRarityForNft(nft: NFT): Promise<{ rarity: Rarity; rank: number }> {
+    if (nft.collection === 'Unknown Collection') return { rarity: nft.rarity, rank: nft.rank };
+
+    try {
+      console.log(`[HeliusService] Calculating rarity for ${nft.name} in collection ${nft.collection}`);
+      const collectionAssets = await this.getAssetsByCollection(nft.collection);
+
+      if (!collectionAssets.length) return { rarity: 'common', rank: 1 };
+
+      const score = this.calculateAttributeRarity(nft, collectionAssets);
+      const percentile = (1 - (score / (nft.attributes.length || 1))) * 100;
+
+      let rarity: Rarity = 'common';
+      if (percentile <= 1) rarity = 'legendary';
+      else if (percentile <= 5) rarity = 'epic';
+      else if (percentile <= 20) rarity = 'rare';
+      else if (percentile <= 50) rarity = 'uncommon';
+
+      // Simple ranking within the fetched sample
+      const sorted = collectionAssets
+        .map(asset => ({
+          id: asset.id,
+          score: this.calculateAttributeRarityFromAsset(asset, collectionAssets)
+        }))
+        .sort((a, b) => b.score - a.score);
+
+      const rank = sorted.findIndex(s => s.id === nft.id) + 1 || 1;
+
+      return { rarity, rank };
+    } catch (e) {
+      console.error('[HeliusService] Rarity calculation error:', e);
+      return { rarity: nft.rarity, rank: nft.rank };
+    }
+  }
+
+  private calculateAttributeRarityFromAsset(asset: HeliusAsset, collection: HeliusAsset[]): number {
+    const assetAttributes = this.processAttributes(asset.content?.metadata?.attributes || []);
+    return assetAttributes.reduce((total, attr) => {
+      const count = collection.filter(a =>
+        (a.content?.metadata?.attributes || []).some(ra => ra.trait_type === attr.trait && String(ra.value) === String(attr.value))
+      ).length;
+      return total + (1 - (count / collection.length));
+    }, 0);
   }
 
   private async calculateRarity(nft: NFT, collectionAssets: HeliusAsset[]): Promise<Rarity> {
