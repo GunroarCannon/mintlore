@@ -1,105 +1,156 @@
-# Solana Mobile Expo Template
+# Mintlore
 
-This template is a ready-to-go Android Expo dApp that offers:
+A mobile-first NFT explorer and scanner built on Solana. Mintlore transforms the experience of viewing digital assets into a nostalgic, Pokedex-inspired adventure — scan any wallet, no funded account required, and watch your collection come alive.
 
-- Solana libraries: `web3.js`, Mobile Wallet Adapter, and `spl-token`.
-- Required polyfills like `crypto` and `Buffer` configured.
-- Pre-built React UI and re-usable hooks and code patterns like `useMobileWallet`.
+---
 
-**This is only fully functional on Android.**
+<img width="261" height="545" alt="Screenshot 2026-03-08 112113" src="https://github.com/user-attachments/assets/e18eb228-6e76-4d42-a577-acdf944c5a82" />
 
-<table>
-  <tr>
-    <td align="center">
-      <img src="./screenshots/screenshot1.png" alt="Scaffold dApp Screenshot 1" width=300 />
-    </td>
-    <td align="center">
-      <img src="./screenshots/screenshot2.png" alt="Scaffold dApp Screenshot 2" width=300 />
-    </td>
-    <td align="center">
-      <img src="./screenshots/screenshot3.png" alt="Scaffold dApp Screenshot 3" width=300 />
-    </td>
-  </tr>
-</table>
+
+## What It Is
+
+Mintlore is a React Native app that lets anyone explore Solana NFT wallets through a premium, game-inspired interface. It is designed to make the Solana ecosystem more accessible: you do not need your own wallet, you do not need SOL, and you do not need any prior Web3 knowledge. Just paste a wallet address, scan a QR code, and discover.
+
+It is the kind of app you hand someone when you want to show them what Web3 actually feels like.
+
+---
+
+## Features
+
+<img width="1024" height="1024" alt="mintlore-icon_old" src="https://github.com/user-attachments/assets/75f921fb-a68b-4155-be4a-7dd69a5970a1" />
+
+- Wallet scanner powered by the Helius DAS API
+- QR code scanning for instant wallet lookup or Mintlore-to-Mintlore NFT sharing
+- Pokedex-style NFT display with type assignment, rarity ranking, and ability derivation
+- Real-time floor prices via Magic Eden (no API key required)
+- Dark-themed, 3D-styled UI with smooth animations
+- Curated retro soundtrack with in-app audio controls
+- No wallet connection required to browse any public wallet
+- MWA (Mobile Wallet Adapter) support for connecting your own wallet
+- Offline-resilient caching layer for fast repeat scans
+
+---
 
 ## Tech Stack
 
-| Library               | Category          | Version | Description                                           |
-| --------------------- | ----------------- | ------- | ----------------------------------------------------- |
-| React Native          | Mobile Framework  | v0.76   | The best cross-platform mobile framework              |
-| Expo                  | SDK               | v52     | Allows (optional) Expo modules                        |
-| React                 | UI Framework      | v18.3   | The most popular UI framework in the world            |
-| Mobile Wallet Adapter | SDK               | v2.1    | Connect and request signing from mobile wallet apps   |
-| Solana web3.js        | SDK               | v1.78   | General Solana library for transactions and RPCs      |
-| spl-token             | SDK               | v0.4    | Library for building with Solana SPL tokens           |
-| React Native Paper    | Component Library | v5.12   | Production-ready components following Material Design |
-| React Navigation      | Navigation        | v6      | Performant and consistent navigation framework        |
-| React Query           | State management  | v5.24   | Async query management                                |
-| TypeScript            | Language          | v5      | Static typechecking                                   |
-| AsyncStorage          | Persistence       | v1.23   | State persistence                                     |
+| Layer | Technology |
+|---|---|
+| Framework | React Native + Expo |
+| Blockchain | Solana (via Helius DAS API) |
+| NFT Data | Helius `getAssetsByOwner`, `getAsset` |
+| Market Data | Magic Eden v2 REST API |
+| Audio | expo-av |
+| QR Scanning | expo-camera (CameraView) |
+| QR Sharing | react-native-qrcode-svg + js-base64 |
+| Wallet Adapter | Mobile Wallet Adapter (MWA) |
+| Color Analysis | Custom dominant color service |
 
-## Quick Start
+---
+
+## Getting Started
 
 ### Prerequisites
 
-- A free [Expo](https://expo.dev/) account.
-- An Android device/emulator to test your app
-  - Install an MWA compliant wallet app on your device/emulator.
-- If using Expo's cloud service `eas build`, no further setup is required.
-- If building locally:
-  - React Native and Android Envrionment [setup](https://docs.solanamobile.com/getting-started/development-setup)
+- Node.js 18+
+- Expo CLI
+- Android device or emulator (primary target)
+- A Helius API key and RPC endpoint
 
-### Initialize
+### Installation
 
-Run the CLI command:
-
-```
-yarn create expo-app --template @solana-mobile/solana-mobile-expo-template
+```bash
+git clone https://github.com/yourhandle/mintlore.git
+cd mintlore
+npm install
 ```
 
-Choose your project name then navigate into the directory.
+### Environment
 
-### Build and run the app
+Create a `.env` file in the root:
 
-Once your app is initialized, follow the **["Running the app"](https://docs.solanamobile.com/react-native/expo#running-the-app)** guide to launch the template as a custom development build.
+```
+API_KEY=your_helius_api_key
+RPC_ENDPOINT=https://mainnet.helius-rpc.com/?api-key=your_helius_api_key
+```
 
-## Troubleshooting
+### Running
 
-- `Metro has encountered an error: While trying to resolve module @solana-mobile/mobile-wallet-adapter-protocol...`
+```bash
+npx expo start
+```
 
-  - This is an on-going issue when using `npm install` to install the Expo template.
-  - To mitigate, clean your project dependencies and reinstall with `yarn install`
+For Android (recommended):
+```bash
+npx expo run:android
+```
 
-- `The package 'solana-mobile-wallet-adapter-protocol' doesn't seem to be linked. Make sure: ...`
+---
 
-  - Ensure you are _NOT_ using Expo Go to run your app.
-  - You need to be using an [Expo custom development build](https://docs.solanamobile.com/react-native/expo#custom-development-build), rather than Expo Go.
+## How It Works
 
-- `failed to connect to...`
+### Scanning
 
-  - This is an Expo error that can occur when trying to connect to the dev server on certain Wifi networks.
-  - To fix, try starting the dev server with the `--tunnel` command (`npx expo start --dev-client --tunnel`)
+1. Enter any Solana wallet address or scan a QR code
+2. Mintlore calls the Helius DAS `getAssetsByOwner` endpoint
+3. Each NFT is processed: image normalized, type derived from metadata keywords and dominant color analysis, rarity calculated from supply data
+4. Floor prices are fetched from Magic Eden using the collection symbol
+5. Results are cached for 2 minutes to keep repeat scans fast
 
-- `Error: crypto.getRandomValues() not supported`
-  - This is a polyfill issue when trying to use certain functions from the `@solana/web3.js` in a React Native/Expo environment.
-  - To fix, ensure your App properly imports and uses the polyfills like in this [guide](http://docs.solanamobile.com/react-native/expo#step-3-update-appjs-with-polyfills).
+### Type Assignment
 
-<br>
+NFTs are assigned Pokedex-style types (fire, water, electric, etc.) using a three-step system:
 
-- `error Failed to load configuration of your project.`
-  - Same as above, but for `yarn`. [Uninstall and reinstall](https://github.com/react-native-community/cli#updating-the-cli) the CLI through yarn.
+1. Keyword matching against NFT name and trait names
+2. Dominant color sampling from the NFT image
+3. Weighted random fallback
 
-<br>
+### Rarity
 
-- `Looks like your iOS environment is not properly set`:
-  - You can ignore this during template initialization and build the Android app as normal. This template is only compatible with Android.
+Rarity is calculated from on-chain supply data where available (print max supply). Collections with no supply data fall back to a weighted random distribution skewed heavily toward common.
 
-<br>
+### QR Sharing
 
-- `Usage Error: It seems you are trying to add a package using a https:... url; we now require package names to be explicitly specified.`
-  - This error happens on certain versions of `yarn`, and occurs if you try to initialize the template through the Github repo URL, rather than the npm package. To avoid this, use the `@solana-mobile/solana-mobile-dapp-scaffold` package as specified, or downgrade your `yarn` version to classic (1.22.x).
+Users can share their discovered NFTs via a compact QR code format (`mintlore://share/...`). Data is base64-encoded and paginated at 10 NFTs per code to stay within QR size limits. Another user can scan this code to import the collection into their own discovery log.
 
-<br>
+---
 
-- `error Couldn't find the ".../@solana-mobile/solana-mobile-dapp-scaffold/template.config.js file inside "@solana-mobile/solana-mobile-dapp-scaffold" template.`
-  - This is a [known error](https://github.com/react-native-community/cli/issues/1924) that occurs with certain versions of `yarn` (>= 3.5.0). It is fixed by running the cli command with the `--npm` flag or downgrading your version of `yarn`.
+## Project Status
+
+Mintlore is a work in progress, submitted as part of a Solana Mobile Hackathon. Core scanning, display, and QR sharing features are functional. Known areas still being refined:
+
+- Metadata normalization across inconsistent collection schemas
+- QR scanner reliability edge cases
+- Floor price coverage for obscure or unlisted collections
+- Rarity ranking accuracy for collections without full on-chain supply data
+
+---
+
+## Architecture Notes
+
+- All blockchain interaction goes through Helius RPC — no direct web3.js RPC calls for NFT data
+- Magic Eden floor price calls are skipped on localhost (CORS) and on symbols containing special characters
+- The audio system (`audioService`) manages a looping scan sound and a retro music track with track cycling support
+- Color analysis runs client-side via a custom `colorService` that samples the dominant hue from NFT images to inform type assignment
+
+---
+
+## Roadmap
+
+- Collection filtering and search
+- Trait explorer and rarity deep-dive per NFT
+- Social sharing to native share sheet
+- Persistent favorites across sessions
+- AI-enhanced NFT lore generation via metadata
+
+---
+
+## Acknowledgments
+
+Built on Solana using Helius infrastructure. Market data provided by Magic Eden. Audio and visual design by the Mintlore team.
+![WhatsApp Image 2026-03-08 at 14 58 17](https://github.com/user-attachments/assets/34c13ff6-434a-4ff8-b014-a567765c48a2)
+
+---
+
+## License
+
+MIT
