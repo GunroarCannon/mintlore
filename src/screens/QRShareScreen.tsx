@@ -5,6 +5,7 @@ import {
     StyleSheet,
     TouchableOpacity,
     Dimensions,
+    ScrollView,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { QRShareScreenProps } from '../types';
@@ -16,7 +17,7 @@ const { width: SCREEN_W } = Dimensions.get('window');
 
 export const QRShareScreen: React.FC<QRShareScreenProps> = ({ discoveredNfts, onBack }) => {
     const [page, setPage] = React.useState(0);
-    const perPage = 10; // mint addresses + short names are small
+    const perPage = 3; // Reduced specifically to make the physical QR code grid larger/easier for cameras to resolve
     const totalPages = Math.ceil(discoveredNfts.length / perPage);
 
     // Ultra-compact: only share mint address + name
@@ -41,59 +42,64 @@ export const QRShareScreen: React.FC<QRShareScreenProps> = ({ discoveredNfts, on
                 <Text style={styles.title}>TRANSMIT LORE</Text>
             </View>
 
-            <View style={styles.qrContainer}>
-                <View style={styles.qrFrame}>
-                    <View style={styles.qrInnerFrame}>
-                        {dataTooBig ? (
-                            <Text style={{ fontFamily: FONTS.mono, fontSize: 12, color: COLORS.dexRed, padding: 20, textAlign: 'center' }}>
-                                DATA PACKET TOO LARGE{'\n'}TRY FEWER NFTs
-                            </Text>
-                        ) : (
-                            <QRCode
-                                value={qrValue}
-                                size={SCREEN_W * 0.6}
-                                color={COLORS.dexBlack}
-                                backgroundColor={COLORS.dexWhite}
-                            />
-                        )}
+            <ScrollView
+                contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
+                showsVerticalScrollIndicator={false}
+            >
+                <View style={styles.qrContainer}>
+                    <View style={styles.qrFrame}>
+                        <View style={styles.qrInnerFrame}>
+                            {dataTooBig ? (
+                                <Text style={{ fontFamily: FONTS.mono, fontSize: 12, color: COLORS.dexRed, padding: 20, textAlign: 'center' }}>
+                                    DATA PACKET TOO LARGE{'\n'}TRY FEWER NFTs
+                                </Text>
+                            ) : (
+                                <QRCode
+                                    value={qrValue}
+                                    size={SCREEN_W * 0.6}
+                                    color={COLORS.dexBlack}
+                                    backgroundColor={COLORS.dexWhite}
+                                />
+                            )}
+                        </View>
                     </View>
+                    <Text style={styles.payloadInfo}>
+                        DATA PACKET: {qrValue.length} BYTES • PAGE {page + 1}/{totalPages}
+                    </Text>
+                    <Text style={styles.syncStatus}>
+                        [ BROADCASTING {pageNfts.length} NFTs... ]
+                    </Text>
                 </View>
-                <Text style={styles.payloadInfo}>
-                    DATA PACKET: {qrValue.length} BYTES • PAGE {page + 1}/{totalPages}
-                </Text>
-                <Text style={styles.syncStatus}>
-                    [ BROADCASTING {pageNfts.length} NFTs... ]
-                </Text>
-            </View>
 
-            {totalPages > 1 && (
-                <View style={styles.pageRow}>
-                    <TouchableOpacity
-                        onPress={() => setPage(p => Math.max(0, p - 1))}
-                        disabled={page === 0}
-                        style={[styles.pageBtn, page === 0 && { opacity: 0.3 }]}
-                    >
-                        <Text style={styles.pageBtnText}>◀ PREV</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        onPress={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                        disabled={page === totalPages - 1}
-                        style={[styles.pageBtn, page === totalPages - 1 && { opacity: 0.3 }]}
-                    >
-                        <Text style={styles.pageBtnText}>NEXT ▶</Text>
-                    </TouchableOpacity>
+                {totalPages > 1 && (
+                    <View style={styles.pageRow}>
+                        <TouchableOpacity
+                            onPress={() => setPage(p => Math.max(0, p - 1))}
+                            disabled={page === 0}
+                            style={[styles.pageBtn, page === 0 && { opacity: 0.3 }]}
+                        >
+                            <Text style={styles.pageBtnText}>◀ PREV</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                            disabled={page === totalPages - 1}
+                            style={[styles.pageBtn, page === totalPages - 1 && { opacity: 0.3 }]}
+                        >
+                            <Text style={styles.pageBtnText}>NEXT ▶</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                <View style={styles.infoBox}>
+                    <Text style={styles.infoTitle}>HOW TO SHARE:</Text>
+                    <Text style={styles.infoText}>
+                        1. Ask another trainer to open their SCANNER{'\n'}
+                        2. Have them tap 📷 SCAN QR CODE{'\n'}
+                        3. Point their camera at this screen{'\n'}
+                        {totalPages > 1 ? `4. Repeat for all ${totalPages} pages!` : ''}
+                    </Text>
                 </View>
-            )}
-
-            <View style={styles.infoBox}>
-                <Text style={styles.infoTitle}>HOW TO SHARE:</Text>
-                <Text style={styles.infoText}>
-                    1. Ask another trainer to open their SCANNER{'\n'}
-                    2. Have them tap 📷 SCAN QR CODE{'\n'}
-                    3. Point their camera at this screen{'\n'}
-                    {totalPages > 1 ? `4. Repeat for all ${totalPages} pages!` : ''}
-                </Text>
-            </View>
+            </ScrollView>
         </View>
     );
 };

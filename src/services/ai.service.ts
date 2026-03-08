@@ -43,63 +43,75 @@ class AiService {
             console.error('[AiService] Cache read error:', e);
         }
 
-        await this.waitRateLimit();
+        const models = [
+            'llama-3.1-8b-instant',
+            'llama3-70b-8192',
+            'mixtral-8x7b-32768'
+        ];
 
         const prompt = `You are a highly advanced Pokedex from the year 2099. Analyze this holographic NFT "${name}". 
     Specs: ${rarity} class, ${type1}${type2 ? '/' + type2 : ''} protocol. 
     Bio-data: ${baseDescription}.
     Provide a factual yet mystical 1-2 sentence description that reveals something specific about its traits or elemental nature. 
-    Be immersive and avoid generic filler.`;
+    IMPORTANT: Do NOT use markdown, do NOT use asterisks (**), and do NOT include headers like "Pokedex Entry" or "Classification". Just provide the description text itself.`;
 
-        const payload = {
-            model: 'llama3-8b-8192', // Using a standard Groq model name
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0.7,
-            max_tokens: 100,
-        };
+        for (const model of models) {
+            try {
+                await this.waitRateLimit();
+                console.log(`[AiService] Attempting with model: ${model}`);
 
-        try {
-            console.log(`[AiService] Requesting AI description for: ${name}`);
-            console.log(`[AiService] API Key check: ${GROQ_API_KEY ? `PRESENT (len: ${GROQ_API_KEY.length})` : 'MISSING'}`);
-            console.log(`[AiService] Payload: ${JSON.stringify(payload)}`);
+                const payload = {
+                    model: model,
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: 0.7,
+                    max_tokens: 100,
+                };
 
-            const response = await fetch(this.GROQ_URL, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${GROQ_API_KEY}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload),
-            });
+                const response = await fetch(this.GROQ_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${GROQ_API_KEY}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload),
+                });
 
-            console.log(`[AiService] Response Status: ${response.status} ${response.statusText}`);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.warn(`[AiService] Model ${model} failed: ${response.status}`, errorData);
+                    continue; // Try next model
+                }
 
-            const data = await response.json();
-            console.log(`[AiService] Response Data: ${JSON.stringify(data)}`);
+                const data = await response.json();
+                let generatedDesc = data.choices?.[0]?.message?.content?.trim()
+                    .replace(/^"|"$/g, '')
+                    .replace(/\*\*/g, '')
+                    .replace(/\*/g, '')
+                    .replace(/Pokedex Entry \d+: /gi, '')
+                    .replace(/Classification: /gi, '')
+                    .trim();
 
-            if (!response.ok) {
-                throw new Error(`Groq API error: ${response.status} ${JSON.stringify(data)}`);
+                if (!generatedDesc) {
+                    console.warn(`[AiService] No content from model ${model}`);
+                    continue;
+                }
+
+                console.log(`[AiService] Successfully generated with ${model}: ${generatedDesc.substring(0, 30)}...`);
+
+                await AsyncStorage.setItem(cacheKey, JSON.stringify({
+                    description: generatedDesc,
+                    timestamp: Date.now()
+                }));
+
+                return generatedDesc;
+            } catch (e: any) {
+                console.error(`[AiService] Error with model ${model}:`, e.message || e);
+                // Continue to next model
             }
-
-            const generatedDesc = data.choices?.[0]?.message?.content?.trim().replace(/^"|"$/g, '');
-
-            if (!generatedDesc) {
-                console.warn('[AiService] No content in AI response');
-                return baseDescription;
-            }
-
-            console.log(`[AiService] Successfully generated description: ${generatedDesc.substring(0, 30)}...`);
-
-            await AsyncStorage.setItem(cacheKey, JSON.stringify({
-                description: generatedDesc,
-                timestamp: Date.now()
-            }));
-
-            return generatedDesc;
-        } catch (e: any) {
-            console.error('[AiService] API error details:', e.message || e);
-            return baseDescription;
         }
+
+        console.warn('[AiService] All models failed or returned no content. Using fallback.');
+        return baseDescription;
     }
 }
 

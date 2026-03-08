@@ -18,6 +18,7 @@ import { getRarityColor, getTypeColor, shortenAddress, formatSOL } from '../util
 import { LedDot } from '../components/LedDot';
 import { TypeBadge } from '../components/TypeBadge';
 import { NftImage } from '../components/NftImage';
+import { audioService } from '../services/audio.service';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -59,6 +60,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ nfts, wallet
   const totalValue = nfts.reduce((s, n) => s + (n.floorPrice || 0), 0);
 
   const toggleFav = (id: string) => {
+    audioService.playButtonClick();
     setFavorites(f => f.includes(id) ? f.filter(x => x !== id) : [...f, id]);
   };
 
@@ -67,18 +69,21 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ nfts, wallet
     return (
       <TouchableOpacity
         style={[styles.nftCard, { borderColor: getRarityColor(item.rarity) }]}
-        onPress={() => onSelectNft(item)}
-        activeOpacity={0.7}
+        onPress={() => { audioService.playNftClick(); onSelectNft(item); }}
+        activeOpacity={0.85}
       >
-        <View style={[styles.nftCardHeader, { backgroundColor: getTypeColor(item.type1) + '33' }]}>
-          <Text style={styles.nftCardNumber}>#{item.number}</Text>
+        <View style={styles.nftCardGlow} />
+        <View style={[styles.nftCardHeader, { backgroundColor: getTypeColor(item.type1) + '22' }]}>
+          <Text style={styles.nftCardNumber}>
+            {item.number === '???' ? 'UNKNOWN' : `#${item.number}`}
+          </Text>
           <TouchableOpacity onPress={() => toggleFav(item.id)} style={{ padding: 4 }}>
-            <Text style={{ fontSize: 16 }}>{isFav ? '♥' : '♡'}</Text>
+            <Text style={{ fontSize: 18, color: isFav ? '#FF3B30' : '#444' }}>{isFav ? '♥' : '♡'}</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.nftCardImageWrap}>
-          <NftImage uri={item.image} size={80} type1={item.type1} number={item.number} />
+          <NftImage uri={item.image} size={90} type1={item.type1} number={item.number} />
           <View style={[styles.rarityGlow, { shadowColor: getRarityColor(item.rarity) }]} />
         </View>
 
@@ -92,8 +97,21 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ nfts, wallet
           </View>
 
           <View style={styles.nftCardFooter}>
-            <Text style={styles.nftCardPrice}>{formatSOL(item.floorPrice)}</Text>
-            <Text style={styles.nftCardRank}>#{item.rank}</Text>
+            <View>
+              <Text style={styles.nftCardPriceLabel}>FLOOR</Text>
+              <Text style={styles.nftCardPrice}>{item.floorPrice > 0 ? formatSOL(item.floorPrice) : '---'}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.nftCardRankLabel}>RANK</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Text style={styles.nftCardRank}>{item.rank > 0 ? `#${item.rank}` : 'NEW'}</Text>
+                {isFav && (
+                  <View style={styles.favTag}>
+                    <Text style={styles.favTagText}>★</Text>
+                  </View>
+                )}
+              </View>
+            </View>
           </View>
         </View>
 
@@ -105,11 +123,11 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ nfts, wallet
   return (
     <View style={styles.collectionScreen}>
       <View style={styles.collectionHeader}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
+        <TouchableOpacity onPress={() => { audioService.playButtonClick(); onBack(); }} style={styles.backButton}>
           <Text style={styles.backArrow}>◀ BACK</Text>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.collectionTitle}>MINTLORE</Text>
+          <Text style={styles.collectionTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>MINTLORE</Text>
           <Text style={styles.walletChip}>{shortenAddress(walletAddress)}</Text>
         </View>
         <LedDot color={COLORS.ledGreen} size={12} pulsing />
@@ -153,7 +171,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ nfts, wallet
             <TouchableOpacity
               key={f}
               activeOpacity={0.9}
-              onPress={() => setFilter(f)}
+              onPress={() => { audioService.playRarityClick(f); setFilter(f); }}
               style={styles.filterBtnContainer}
             >
               {/* Button Shadow/Base */}
@@ -188,7 +206,7 @@ export const CollectionScreen: React.FC<CollectionScreenProps> = ({ nfts, wallet
             return (
               <TouchableOpacity
                 key={s}
-                onPress={() => setSortBy(s)}
+                onPress={() => { audioService.playButtonClick(); setSortBy(s); }}
                 style={[styles.sortBtnFrame, isActive && styles.sortBtnFrameActive]}
                 activeOpacity={0.8}
               >
@@ -279,7 +297,8 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: COLORS.dexWhite,
-    letterSpacing: 4,
+    letterSpacing: 3,
+    flexShrink: 1,
   },
   walletChip: {
     fontFamily: FONTS.mono,
@@ -475,83 +494,133 @@ const styles = StyleSheet.create({
   },
   nftCard: {
     width: (SCREEN_W - 38) / 2,
-    backgroundColor: COLORS.dexBlack,
-    borderRadius: 8,
-    borderWidth: 2,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 12,
+    borderWidth: 1.5,
     overflow: 'hidden',
     position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  nftCardGlow: {
+    position: 'absolute',
+    top: -50,
+    right: -50,
+    width: 100,
+    height: 100,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 50,
   },
   nftCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
   },
   nftCardNumber: {
     fontFamily: FONTS.mono,
-    fontSize: 10,
-    color: '#888',
+    fontSize: 9,
+    color: '#AAA',
     letterSpacing: 1,
+    fontWeight: 'bold',
   },
   nftCardImageWrap: {
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
     position: 'relative',
+    backgroundColor: 'rgba(0,0,0,0.2)',
   },
   rarityGlow: {
     position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    shadowOpacity: 0.5,
+    shadowRadius: 25,
     elevation: 0,
   },
   nftCardInfo: {
-    padding: 8,
+    padding: 10,
+    backgroundColor: '#1A1A1A',
   },
   nftCardName: {
     fontFamily: FONTS.mono,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 'bold',
     color: COLORS.dexWhite,
     letterSpacing: 0.5,
+    marginBottom: 2,
   },
   nftCardCollection: {
     fontFamily: FONTS.mono,
-    fontSize: 9,
+    fontSize: 8,
     color: '#666',
-    marginBottom: 5,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   nftCardTypes: {
     flexDirection: 'row',
     gap: 4,
-    marginBottom: 6,
+    marginBottom: 10,
     flexWrap: 'wrap',
   },
   nftCardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-end',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
+    paddingTop: 8,
+  },
+  nftCardPriceLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 7,
+    color: '#555',
+    marginBottom: 1,
   },
   nftCardPrice: {
     fontFamily: FONTS.mono,
-    fontSize: 10,
+    fontSize: 11,
     color: COLORS.solanaGreen,
     fontWeight: 'bold',
   },
+  nftCardRankLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 7,
+    color: '#555',
+    marginBottom: 1,
+    textAlign: 'right',
+  },
   nftCardRank: {
     fontFamily: FONTS.mono,
-    fontSize: 9,
+    fontSize: 10,
     color: COLORS.ledYellow,
+    fontWeight: 'bold',
+  },
+  favTag: {
+    backgroundColor: '#FF3B30',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  favTagText: {
+    color: 'white',
+    fontSize: 8,
+    fontWeight: 'bold',
   },
   rarityStripe: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: 3,
+    height: 4,
   },
   emptyContainer: {
     flex: 1,

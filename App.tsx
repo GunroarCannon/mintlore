@@ -1,8 +1,9 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { View, StyleSheet, StatusBar } from 'react-native';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { View, StyleSheet, StatusBar, Animated, AppState, BackHandler } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { ScreenType, NFT } from './src/types';
 import { COLORS } from './src/constants/colors';
+import { audioService } from './src/services/audio.service';
 import { ScannerScreen } from './src/screens/ScannerScreen';
 import { CollectionScreen } from './src/screens/CollectionScreen';
 import { DetailScreen } from './src/screens/DetailScreen';
@@ -24,6 +25,58 @@ export default function App() {
   const [walletAddress, setWalletAddress] = useState('');
   const [selectedNft, setSelectedNft] = useState<NFT | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+
+  // Handle music based on screen and AppState
+  useEffect(() => {
+    if (screen === 'SCANNER') {
+      console.log('[App] Starting music for SCANNER screen');
+      audioService.startMusic();
+    } else {
+      console.log('[App] Stopping music for screen:', screen);
+      audioService.stopMusic();
+    }
+  }, [screen]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState.match(/inactive|background/)) {
+        console.log('[App] App moving to background, pausing music');
+        audioService.pauseMusic();
+      } else if (nextAppState === 'active' && screen === 'SCANNER') {
+        console.log('[App] App moving to foreground, resuming music');
+        audioService.resumeMusic();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [screen]);
+
+  // Hardware Back Button handler (Android)
+  useEffect(() => {
+    const onBackPress = () => {
+      if (screen === 'SCANNER') {
+        return false; // Let the OS handle it (exits app)
+      }
+
+      audioService.playButtonClick();
+
+      if (screen === 'DETAIL') {
+        const inCurrentCollection = nfts.some(n => n.mintAddress === selectedNft?.mintAddress);
+        setScreen(inCurrentCollection ? 'COLLECTION' : 'DISCOVERED');
+      } else if (screen === 'QR_SHARE') {
+        setScreen('DISCOVERED');
+      } else {
+        setScreen('SCANNER');
+      }
+
+      return true; // Prevent default back behaviour
+    };
+
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [screen, nfts, selectedNft]);
 
   const handleScanComplete = useCallback(async (data: NFT[], addr: string) => {
     setNfts(data);
@@ -69,6 +122,29 @@ export default function App() {
     setScreen('DISCOVERED');
   }, []);
 
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Reset and animate on screen change
+    fadeAnim.setValue(0);
+    slideAnim.setValue(20);
+
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 50,
+        friction: 7,
+        useNativeDriver: true,
+      })
+    ]).start();
+  }, [screen]);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ConnectionProvider>
@@ -76,70 +152,69 @@ export default function App() {
           <SafeAreaView style={styles.root}>
             <StatusBar barStyle="light-content" backgroundColor={COLORS.dexRed} />
 
-            {screen === 'SCANNER' && (
-              <ScannerScreen
-                onScanComplete={handleScanComplete}
-                onOpenDiscovered={openDiscovered}
-                onOpenQRScan={() => setScreen('QR_SCAN')}
-              />
-            )}
+            <Animated.View style={{
+              flex: 1,
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }}>
+              {screen === 'SCANNER' && (
+                <ScannerScreen
+                  onScanComplete={handleScanComplete}
+                  onOpenDiscovered={openDiscovered}
+                  onOpenQRScan={() => setScreen('QR_SCAN')}
+                />
+              )}
 
-            {screen === 'COLLECTION' && (
-              <CollectionScreen
-                nfts={nfts}
-                walletAddress={walletAddress}
-                onSelectNft={handleSelectNft}
-                onBack={() => setScreen('SCANNER')}
-              />
-            )}
+              {screen === 'COLLECTION' && (
+                <CollectionScreen
+                  nfts={nfts}
+                  walletAddress={walletAddress}
+                  onSelectNft={handleSelectNft}
+                  onBack={() => setScreen('SCANNER')}
+                />
+              )}
 
-            {screen === 'DETAIL' && selectedNft && (
-              <DetailScreen
-                nft={selectedNft}
-                onBack={() => {
-                  // Back to wherever we came from
-                  const inCurrentCollection = nfts.some(n => n.mintAddress === selectedNft.mintAddress);
-                  setScreen(inCurrentCollection ? 'COLLECTION' : 'DISCOVERED');
-                }}
-                onNext={handleNext}
-                onPrev={handlePrev}
-              />
-            )}
+              {screen === 'DETAIL' && selectedNft && (
+                <DetailScreen
+                  nft={selectedNft}
+                  onBack={() => {
+                    const inCurrentCollection = nfts.some(n => n.mintAddress === selectedNft.mintAddress);
+                    setScreen(inCurrentCollection ? 'COLLECTION' : 'DISCOVERED');
+                  }}
+                  onNext={handleNext}
+                  onPrev={handlePrev}
+                />
+              )}
 
-            {screen === 'DISCOVERED' && (
-              <DiscoveredScreen
-                onSelectNft={handleSelectNft}
-                onBack={() => setScreen('SCANNER')}
-                onShare={async () => {
-                  const data = await discoveryStorage.getAllDiscovered();
-                  setDiscoveredNfts(data.map(e => e.nft));
-                  setScreen('QR_SHARE');
-                }}
-              />
-            )}
+              {screen === 'DISCOVERED' && (
+                <DiscoveredScreen
+                  onSelectNft={handleSelectNft}
+                  onBack={() => setScreen('SCANNER')}
+                  onShare={async () => {
+                    const data = await discoveryStorage.getAllDiscovered();
+                    setDiscoveredNfts(data.map(e => e.nft));
+                    setScreen('QR_SHARE');
+                  }}
+                />
+              )}
 
-            {screen === 'QR_SCAN' && (
-              <QRScanScreen
-                onScanAddress={(addr) => {
-                  // Trigger scan from ScannerScreen logic essentially
-                  // but we'll just go back to scanner and let user paste if needed, 
-                  // or we could trigger handleScanComplete here if we had a way to trigger executeScan.
-                  // For now, let's just use the scanner logic in ScannerScreen.
-                  setScreen('SCANNER');
-                  // We'll need a way to pass the address back. 
-                  // Let's just navigate back and let handleScanComplete be triggered by the user hitting scan.
-                }}
-                onImportData={handleImportData}
-                onBack={() => setScreen('SCANNER')}
-              />
-            )}
+              {screen === 'QR_SCAN' && (
+                <QRScanScreen
+                  onScanAddress={(addr) => {
+                    setScreen('SCANNER');
+                  }}
+                  onImportData={handleImportData}
+                  onBack={() => setScreen('SCANNER')}
+                />
+              )}
 
-            {screen === 'QR_SHARE' && (
-              <QRShareScreen
-                discoveredNfts={discoveredNfts}
-                onBack={() => setScreen('DISCOVERED')}
-              />
-            )}
+              {screen === 'QR_SHARE' && (
+                <QRShareScreen
+                  discoveredNfts={discoveredNfts}
+                  onBack={() => setScreen('DISCOVERED')}
+                />
+              )}
+            </Animated.View>
           </SafeAreaView>
         </SafeAreaProvider>
       </ConnectionProvider>

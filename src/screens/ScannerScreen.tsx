@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  AppState,
+  BackHandler,
 } from 'react-native';
 import { ScannerScreenProps } from '../types';
 import { COLORS } from '../constants/colors';
@@ -32,13 +34,26 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onScanComplete, on
   const [scanPhase, setScanPhase] = useState('');
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState('');
-  const [musicTrack, setMusicTrack] = useState(audioService.getCurrentTrackName());
-  const [musicOn, setMusicOn] = useState(false);
-
-  // Start default music on mount
+  // Handle AppState for other needs if any (currently none, but keeping structure if needed)
   useEffect(() => {
-    audioService.startMusic().then(() => setMusicOn(true));
-    return () => { audioService.stopMusic(); };
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      // Logic for ScannerScreen specific AppState changes if any
+    });
+
+    const backAction = () => {
+      BackHandler.exitApp();
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      backAction
+    );
+
+    return () => {
+      subscription.remove();
+      backHandler.remove();
+    };
   }, []);
 
   const phases = [
@@ -47,8 +62,9 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onScanComplete, on
     'READING TOKEN ACCOUNTS...',
     'FETCHING METADATA...',
     'DECODING NFT DATA...',
-    'LOADING COLLECTION INFO...',
+    'ANALYZING MARKET DATA...',
     'COMPUTING RARITY RANKS...',
+    'FETCHING NFT DATA...',
     'SCAN COMPLETE!',
   ];
 
@@ -132,7 +148,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onScanComplete, on
   const scanPressAnim = useRef(new Animated.Value(0)).current;
   const mwaPressAnim = useRef(new Animated.Value(0)).current;
   const qrPressAnim = useRef(new Animated.Value(0)).current;
-  const discPressAnim = useRef(new Animated.Value(0)).current;
+  const discPressAnim = useRef(new Animated.Value(1)).current;
 
   const animatePress = (anim: Animated.Value, toValue: number) => {
     Animated.spring(anim, {
@@ -157,18 +173,15 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onScanComplete, on
         style={styles.bigLedRing}
         onPress={async () => {
           audioService.playButtonClick();
-          const trackName = await audioService.nextTrack();
-          setMusicTrack(trackName);
-          if (!musicOn) { setMusicOn(true); }
+          await audioService.nextTrack();
         }}
         onLongPress={async () => {
-          const playing = await audioService.toggleMusic();
-          setMusicOn(playing);
+          await audioService.toggleMusic();
         }}
         activeOpacity={0.7}
       >
         <View style={[styles.bigLed, { backgroundColor: connected ? COLORS.ledGreen : scanning ? COLORS.ledYellow : COLORS.ledRed }]}>
-          <LedDot color={connected ? COLORS.ledGreen : scanning ? COLORS.ledYellow : COLORS.ledRed} size={30} pulsing={scanning || musicOn} />
+          <LedDot color={connected ? COLORS.ledGreen : scanning ? COLORS.ledYellow : COLORS.ledRed} size={30} pulsing={scanning} />
         </View>
       </TouchableOpacity>
       {/* {musicOn && <Text style={styles.musicLabel}>♪ {musicTrack}</Text>} */}
@@ -294,13 +307,25 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({ onScanComplete, on
               activeOpacity={1}
               onPressIn={() => animatePress(discPressAnim, 4)}
               onPressOut={() => animatePress(discPressAnim, 0)}
-              onPress={() => { audioService.playDiscoveryOpen(); onOpenDiscovered(); }}
+              onPress={() => {
+                audioService.playDiscoveryOpen();
+                // Pop animation (scale up slightly then down)
+                Animated.sequence([
+                  Animated.spring(discPressAnim, { toValue: 1.1, useNativeDriver: true, tension: 150, friction: 3 }),
+                  Animated.spring(discPressAnim, { toValue: 1, useNativeDriver: true, tension: 150, friction: 3 }),
+                ]).start();
+
+                // Fire 90% through — estimate total animation duration ~600ms
+                setTimeout(() => {
+                  onOpenDiscovered();
+                }, 590);
+              }}
               disabled={scanning}
               style={{ flex: 1 }}
             >
               <Animated.View style={[
                 styles.dexButton,
-                { backgroundColor: COLORS.dexGrey, borderColor: '#444', transform: [{ translateY: discPressAnim }] }
+                { backgroundColor: COLORS.dexGrey, borderColor: '#444', transform: [{ scale: discPressAnim }] }
               ]}>
                 <Text style={styles.dexButtonText}>DISCOVERED</Text>
               </Animated.View>
@@ -373,16 +398,18 @@ const styles = StyleSheet.create({
   scanHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 10,
     marginBottom: 2,
   },
   scanTitle: {
     fontFamily: FONTS.mono,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
     color: COLORS.screenGreenDark,
     textAlign: 'center',
     letterSpacing: 1,
+    flexShrink: 1,
   },
   networkBadge: {
     flexDirection: 'row',
@@ -526,7 +553,7 @@ const styles = StyleSheet.create({
     color: COLORS.dexWhite + '55',
     letterSpacing: 2,
     position: 'absolute',
-    bottom: 50,
+    bottom: 17,
   },
   errorContainer: {
     backgroundColor: COLORS.ledRed + '22',

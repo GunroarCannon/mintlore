@@ -18,6 +18,7 @@ export interface DiscoveredEntry {
 export interface Attribute {
   trait: string;
   value: number;
+  displayValue?: string;
   max: number;
 }
 

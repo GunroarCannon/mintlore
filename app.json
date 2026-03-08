@@ -4,26 +4,48 @@
     "slug": "Mintlore",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/mintlore-icon.png",
+    "scheme": "mintlore",
     "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#EC423C"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.solana.mobile.expo.template"
+      "bundleIdentifier": "com.gunroar.mintlore"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/mintlore-icon.png",
+        "backgroundColor": "#EC423C"
       },
-      "package": "com.solana.mobile.expo.template"
+      "package": "com.gunroar.mintlore",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "mintlore"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -33,6 +55,11 @@
       "expo-asset",
       "expo-av",
       "expo-file-system"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "949b2582-05e6-4af0-b945-34003a2fe810"
+      }
+    }
   }
 }

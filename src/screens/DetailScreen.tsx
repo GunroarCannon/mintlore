@@ -42,8 +42,18 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
   const [loadingDesc, setLoadingDesc] = useState(false);
   const [rarityData, setRarityData] = useState({ rarity: nft.rarity, rank: nft.rank });
   const [loadingRarity, setLoadingRarity] = useState(false);
+  const [marketData, setMarketData] = useState({ floorPrice: nft.floorPrice, lastSale: nft.lastSale });
+  const [loadingMarket, setLoadingMarket] = useState(false);
 
   useEffect(() => {
+    // Reset local state for the new NFT immediately
+    setDescription(nft.description);
+    setRarityData({ rarity: nft.rarity, rank: nft.rank });
+    setMarketData({ floorPrice: nft.floorPrice, lastSale: nft.lastSale });
+    setLoadingDesc(false);
+    setLoadingRarity(false);
+    setLoadingMarket(false);
+
     const fetchLazyData = async () => {
       // 1. Fetch AI Description
       if (nft.description === 'No description available' || nft.description.length < 50) {
@@ -68,9 +78,18 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
         setRarityData(result);
         setLoadingRarity(false);
       }
+
+      // 3. Fetch Market Data (Lazy Load)
+      if (nft.floorPrice === 0 || nft.lastSale === 0) {
+        setLoadingMarket(true);
+        console.log(`[DetailScreen] Analyzing Market Dynamics for ${nft.name}`);
+        const mData = await heliusService.getMarketData(nft.mintAddress);
+        setMarketData(mData);
+        setLoadingMarket(false);
+      }
     };
     fetchLazyData();
-  }, [nft]);
+  }, [nft.id]); // Key on nft.id for stability
 
   const renderTab = () => {
     switch (tab) {
@@ -92,7 +111,7 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
             <View style={styles.aboutRow}>
               <Text style={styles.aboutLabel}>RANK</Text>
               <Text style={[styles.aboutValue, { color: COLORS.ledYellow }]}>
-                {loadingRarity ? 'SCALING...' : `#${rarityData.rank} / ${nft.totalSupply}`}
+                {loadingRarity ? 'VALIDATING...' : rarityData.rank > 0 ? `#${rarityData.rank} / ${nft.totalSupply}` : 'UNRANKED'}
               </Text>
             </View>
             <View style={styles.dividerLine} />
@@ -131,9 +150,18 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
         return (
           <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
             <Text style={styles.sectionTitle}>BASE STATS</Text>
-            {nft.attributes.map((attr, i) => (
-              <StatBar key={i} label={attr.trait} value={attr.value} max={attr.max} />
-            ))}
+            {nft.attributes.map((attr, i) => {
+              const isNumeric = attr.value > 0 || !isNaN(Number(attr.displayValue));
+              if (isNumeric) {
+                return <StatBar key={i} label={attr.trait} value={attr.value || Number(attr.displayValue)} max={attr.max} />;
+              }
+              return (
+                <View key={i} style={styles.aboutRow}>
+                  <Text style={styles.aboutLabel}>{attr.trait.toUpperCase()}</Text>
+                  <Text style={styles.aboutValue}>{attr.displayValue || attr.value}</Text>
+                </View>
+              );
+            })}
             <View style={styles.dividerLine} />
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>TOTAL POWER</Text>
@@ -174,15 +202,10 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
             <Text style={styles.sectionTitle}>ON-CHAIN TRAITS</Text>
             <View style={styles.traitsGrid}>
               {nft.attributes.map((attr, i) => {
-                // Approximate rarity for UI feel if not present
-                const traitRarity = Math.floor(Math.random() * 20) + 1;
                 return (
                   <View key={i} style={styles.traitCard}>
                     <Text style={styles.traitLabel}>{attr.trait.toUpperCase()}</Text>
-                    <Text style={styles.traitValue}>{attr.value}</Text>
-                    <Text style={[styles.traitRarity, traitRarity < 5 && { color: COLORS.legendary }]}>
-                      {traitRarity}% Scarcity
-                    </Text>
+                    <Text style={styles.traitValue}>{attr.displayValue || attr.value}</Text>
                   </View>
                 );
               })}
@@ -197,11 +220,15 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
             <View style={styles.marketCard}>
               <View style={styles.marketRow}>
                 <Text style={styles.marketLabel}>FLOOR PRICE</Text>
-                <Text style={[styles.marketValue, { color: COLORS.solanaGreen }]}>{formatSOL(nft.floorPrice)}</Text>
+                <Text style={[styles.marketValue, { color: COLORS.solanaGreen }]}>
+                  {loadingMarket ? 'SYNCING...' : marketData.floorPrice > 0 ? formatSOL(marketData.floorPrice) : '---'}
+                </Text>
               </View>
               <View style={styles.marketRow}>
                 <Text style={styles.marketLabel}>LAST SALE</Text>
-                <Text style={styles.marketValue}>{formatSOL(nft.lastSale)}</Text>
+                <Text style={styles.marketValue}>
+                  {loadingMarket ? 'SYNCING...' : marketData.lastSale > 0 ? formatSOL(marketData.lastSale) : '---'}
+                </Text>
               </View>
               <View style={styles.marketRow}>
                 <Text style={styles.marketLabel}>COLLECTION RANK</Text>
@@ -213,9 +240,14 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
               </View>
             </View>
             <View style={styles.dividerLine} />
-            <Text style={styles.sectionTitle}>PRICE HISTORY</Text>
+            <Text style={styles.sectionTitle}>MARKET TRENDS (30D)</Text>
             <View style={styles.chartPlaceholder}>
-              <Text style={styles.placeholderNote}>[PLACEHOLDER: Price chart from Magic Eden/Tensor API]</Text>
+              {!marketData.floorPrice && !loadingMarket && (
+                <Text style={styles.placeholderNote}>NO MARKET DATA DETECTED FOR THIS ASSET</Text>
+              )}
+              {loadingMarket && (
+                <Text style={styles.placeholderNote}>SYNCING WITH GLOBAL MARKETPLACES...</Text>
+              )}
               <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 60, marginTop: 12, gap: 4 }}>
                 {[8, 5, 9, 7, 11, 10, 12, 9, 13, 12, 11, 12.5].map((v, i) => (
                   <View
@@ -231,6 +263,7 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
                 <Text style={styles.chartAxisLabel}>30D AGO</Text>
+                <Text style={[styles.chartAxisLabel, { fontStyle: 'italic', opacity: 0.5 }]}>[DATA SIMULATED]</Text>
                 <Text style={styles.chartAxisLabel}>TODAY</Text>
               </View>
             </View>
@@ -238,6 +271,7 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
             <TouchableOpacity
               style={styles.marketActionBtn}
               onPress={() => {
+                audioService.playButtonClick();
                 Linking.openURL(`https://magiceden.io/item-details/${nft.mintAddress}`);
               }}
             >
@@ -246,6 +280,7 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
             <TouchableOpacity
               style={[styles.marketActionBtn, { backgroundColor: '#1A1A1A', borderColor: COLORS.solanaGreen, marginTop: 8 }]}
               onPress={() => {
+                audioService.playButtonClick();
                 Linking.openURL(`https://www.tensor.trade/item/${nft.mintAddress}`);
               }}
             >
@@ -265,12 +300,12 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
     >
       <View style={[styles.detailTopStrip, { backgroundColor: getTypeColor(nft.type1) }]}>
         <View style={styles.detailTopRow}>
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
+          <TouchableOpacity onPress={() => { audioService.playButtonClick(); onBack(); }} style={styles.backButton}>
             <Text style={[styles.backArrow, { color: COLORS.dexWhite }]}>◀</Text>
           </TouchableOpacity>
           <View style={{ flex: 1, marginHorizontal: 8 }}>
-            <Text style={styles.detailName}>{nft.name}</Text>
-            <Text style={styles.detailNumber}>#{nft.number}</Text>
+            <Text style={styles.detailName} numberOfLines={2}>{nft.name}</Text>
+            <Text style={styles.detailNumber}>{nft.number === '???' ? 'UNKNOWN' : `#${nft.number}`}</Text>
           </View>
           <RarityBadge rarity={nft.rarity} />
         </View>
@@ -287,11 +322,11 @@ export const DetailScreen: React.FC<DetailScreenProps> = ({ nft, onBack, onNext,
 
       <View style={styles.detailCard}>
         <View style={styles.navRow}>
-          <TouchableOpacity onPress={onPrev} style={styles.navBtn}>
+          <TouchableOpacity onPress={() => { audioService.playButtonClick(); onPrev(); }} style={styles.navBtn}>
             <Text style={styles.navBtnText}>◀ PREV</Text>
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
-          <TouchableOpacity onPress={onNext} style={styles.navBtn}>
+          <TouchableOpacity onPress={() => { audioService.playButtonClick(); onNext(); }} style={styles.navBtn}>
             <Text style={styles.navBtnText}>NEXT ▶</Text>
           </TouchableOpacity>
         </View>
@@ -323,8 +358,9 @@ const styles = StyleSheet.create({
   },
   detailTopStrip: {
     paddingTop: 12,
-    paddingBottom: 60,
+    paddingBottom: 120,
     paddingHorizontal: 16,
+    minHeight: 300, // Push the white card lower
   },
   detailTopRow: {
     flexDirection: 'row',
@@ -357,7 +393,7 @@ const styles = StyleSheet.create({
   detailImageFloat: {
     position: 'absolute',
     right: 20,
-    top: 100, // Fixed position relative to overall container
+    top: 120, // Lowered image to align with the higher card
     zIndex: 100, // Highest zIndex
     shadowColor: '#000',
     shadowOpacity: 0.3,
@@ -370,7 +406,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     marginTop: -20,
-    paddingTop: 50,
+    paddingTop: 20,
     paddingHorizontal: 16,
   },
   navRow: {

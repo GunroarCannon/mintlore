@@ -97,8 +97,9 @@ async function persistAuthorization(
 }
 
 export const APP_IDENTITY = {
-  name: "Mintlore",
-  uri: "https://mintlore.ai",
+  name: "Mintlore Scanner",
+  uri: "https://solana.com",
+  icon: "favicon.ico",
 };
 
 export function useAuthorization() {

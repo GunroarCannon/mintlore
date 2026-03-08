@@ -21,7 +21,9 @@ export const QRScanScreen: React.FC<QRScanScreenProps> = ({ onScanAddress, onImp
     const [scanned, setScanned] = useState(false);
 
     useEffect(() => {
+        console.log('[QRScanScreen] Mounted, checking permissions. Current status:', permission?.status);
         if (!permission) {
+            console.log('[QRScanScreen] Requesting camera permission...');
             requestPermission();
         }
     }, [permission]);
@@ -45,21 +47,62 @@ export const QRScanScreen: React.FC<QRScanScreenProps> = ({ onScanAddress, onImp
     }
 
     const handleBarCodeScanned = ({ data }: { data: string }) => {
-        if (scanned) return;
+        console.log('[QRScanScreen] Raw barcode scanned. Length:', data?.length);
+        if (scanned) {
+            console.log('[QRScanScreen] Already processing a scan, ignoring...');
+            return;
+        }
+        console.log('[QRScanScreen] Processing scan data:', data.slice(0, 50) + (data.length > 50 ? '...' : ''));
         setScanned(true);
 
         try {
             if (data.startsWith('mintlore://share/')) {
-                // Handle Lore Import
+                console.log('[QRScanScreen] Detected mintlore share URL');
                 const base64Data = data.replace('mintlore://share/', '');
+                console.log('[QRScanScreen] Base64 data length:', base64Data.length);
                 const jsonStr = decode(base64Data);
-                const importedNfts: NFT[] = JSON.parse(jsonStr);
-                Alert.alert('LORE DETECTED', `Import ${importedNfts.length} NFTs to your discovery log?`, [
-                    { text: 'Cancel', onPress: () => setScanned(false), style: 'cancel' },
-                    { text: 'Import', onPress: () => onImportData(importedNfts) },
-                ]);
+                console.log('[QRScanScreen] Decoded JSON length:', jsonStr.length);
+                const compact: Array<{ m: string; n: string; r: string }> = JSON.parse(jsonStr);
+                console.log(`[QRScanScreen] Parsed ${compact.length} items from JSON`);
+
+                // Rarity first-letter map to match what QRShareScreen encodes
+                const rarityMap: Record<string, string> = {
+                    c: 'common', u: 'uncommon', r: 'rare', e: 'epic', l: 'legendary'
+                };
+
+                // Reconstruct minimal valid NFT objects from compact data
+                const importedNfts: NFT[] = compact.map(item => ({
+                    id: item.m,
+                    mintAddress: item.m,
+                    name: item.n,
+                    rarity: (rarityMap[item.r] || 'common') as any,
+                    collection: 'Imported',
+                    image: null,
+                    type1: 'normal' as any,
+                    type2: undefined,
+                    number: '???',
+                    description: 'Imported via QR share',
+                    attributes: [],
+                    floorPrice: 0,
+                    lastSale: 0,
+                    holderCount: 1,
+                    totalSupply: 1,
+                    rank: 0,
+                    evolution: [],
+                    abilities: [],
+                    owner: '',
+                    isFavorite: false,
+                }));
+
+                Alert.alert(
+                    'LORE DETECTED',
+                    `Import ${importedNfts.length} NFTs to your discovery log?`,
+                    [
+                        { text: 'Cancel', onPress: () => setScanned(false), style: 'cancel' },
+                        { text: 'Import', onPress: () => onImportData(importedNfts) },
+                    ]
+                );
             } else {
-                // Handle Wallet Address
                 const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
                 const addr = data.trim();
                 if (base58Regex.test(addr)) {
@@ -71,8 +114,8 @@ export const QRScanScreen: React.FC<QRScanScreenProps> = ({ onScanAddress, onImp
                 }
             }
         } catch (err) {
-            console.error('QR Parse Error:', err);
-            Alert.alert('Error', 'Failed to parse QR code data.', [
+            console.error('[QRScanScreen] QR Parse Error:', err);
+            Alert.alert('Error', 'Failed to parse QR code data. Check logs for details.', [
                 { text: 'Retry', onPress: () => setScanned(false) }
             ]);
         }
@@ -82,9 +125,10 @@ export const QRScanScreen: React.FC<QRScanScreenProps> = ({ onScanAddress, onImp
         <View style={styles.container}>
             <CameraView
                 style={StyleSheet.absoluteFillObject}
+                onCameraReady={() => console.log('[QRScanScreen] 🟢 Camera is ready and actively looking for QR codes')}
                 onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
                 barcodeScannerSettings={{
-                    barcodeTypes: ['qr'],
+                    barcodeTypes: ["qr", "pdf417"],
                 }}
             />
 

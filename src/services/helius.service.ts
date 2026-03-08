@@ -61,14 +61,16 @@ const typeMappings: Record<string, PokemonType> = {
 export class HeliusService {
   private rpcUrl: string;
   private connection: Connection;
-  // Use the constant Program ID instead of the broken class import
   private readonly METADATA_PROGRAM_ID = new PublicKey('metaqbxxUf2WpBR1E4CwbcvcrGsn6vGj6yDrsTdQ6tH');
+
+  // Cache collection symbol -> floor price to avoid hammering ME API
+  private floorPriceCache: Map<string, { price: number; ts: number }> = new Map();
+  private readonly FLOOR_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   constructor() {
     this.rpcUrl = RPC_ENDPOINT;
     this.connection = new Connection(this.rpcUrl);
   }
-
 
   async scanWallet(
     walletAddress: string,
@@ -78,14 +80,8 @@ export class HeliusService {
     try {
       console.log(`Scanning wallet: ${walletAddress} (forceRefresh: ${forceRefresh})`);
 
-      onProgress?.({
-        phase: 'FETCHING ASSETS',
-        current: 0,
-        total: 100,
-        percentage: 10
-      });
+      onProgress?.({ phase: 'FETCHING ASSETS', current: 0, total: 100, percentage: 10 });
 
-      // Use cached assets unless forceRefresh is true
       let assets: HeliusAsset[];
       const cacheKey = `assets_owner_${walletAddress}`;
       const cached = forceRefresh ? null : cacheService.get<HeliusAsset[]>(cacheKey);
@@ -95,19 +91,13 @@ export class HeliusService {
         assets = cached;
       } else {
         assets = await this.getAssetsByOwner(walletAddress);
-        cacheService.set(cacheKey, assets, 2 * 60 * 1000); // Cache for 2 minutes
+        cacheService.set(cacheKey, assets, 2 * 60 * 1000);
       }
 
       console.log(`Found ${assets.length} assets`);
 
-      onProgress?.({
-        phase: 'PROCESSING NFTs',
-        current: 0,
-        total: assets.length,
-        percentage: 30
-      });
+      onProgress?.({ phase: 'PROCESSING NFTs', current: 0, total: assets.length, percentage: 30 });
 
-      // Process assets with concurrency control and progress updates
       const nfts: NFT[] = [];
       const concurrency = 5;
 
@@ -126,12 +116,11 @@ export class HeliusService {
         });
       }
 
-      onProgress?.({
-        phase: 'COMPLETE',
-        current: assets.length,
-        total: assets.length,
-        percentage: 100
-      });
+      onProgress?.({ phase: 'FETCHING MARKET DATA', current: 0, total: nfts.length, percentage: 85 });
+
+      await this.enrichWithMarketData(nfts);
+
+      onProgress?.({ phase: 'COMPLETE', current: assets.length, total: assets.length, percentage: 100 });
 
       return nfts;
     } catch (error: any) {
@@ -178,25 +167,29 @@ export class HeliusService {
         imageUrl = await this.fetchNFTImage(asset.id);
       }
 
-      const normalizeUrl = this.normalizeImageUrl(imageUrl);
-      const { type1, type2 } = await this.mapToPokemonType(attributes, metadata.name, normalizeUrl);
+      const normalizedUrl = this.normalizeImageUrl(imageUrl);
+      const { type1, type2 } = await this.mapToPokemonType(attributes, metadata.name, normalizedUrl);
 
-      // Randomize rarity if common or not set
-      let rarity = asset.supply?.print_max_supply < 100 ? 'rare' : 'common';
-      rarity = this.getWeightedRandomRarity();
+      // FIX: Use real supply-based rarity, not random override
+      const rarity = this.calculateSupplyRarity(asset, attributes);
 
       const baseDescription = metadata.description || 'No description available';
+
+      // FIX: Also check attributes for the number (edition, serial, etc.)
+      const number = this.extractNumber(metadata.name, attributes);
 
       const nft: NFT = {
         id: asset.id,
         mintAddress: asset.id,
         name: metadata.name || 'Unnamed NFT',
         collection: collectionId,
-        image: normalizeUrl,
-        rarity: rarity as Rarity,
+        // Store symbol for ME floor price lookup
+        symbol: metadata.symbol || '',
+        image: normalizedUrl,
+        rarity: rarity,
         type1: type1,
         type2: type2,
-        number: this.extractNumber(metadata.name),
+        number: number,
         description: baseDescription,
         attributes: attributes,
         floorPrice: 0,
@@ -216,6 +209,22 @@ export class HeliusService {
     }
   }
 
+  // FIX: Real rarity based on supply — no random override
+  private calculateSupplyRarity(asset: HeliusAsset, attributes: Attribute[]): Rarity {
+    const maxSupply = asset.supply?.print_max_supply;
+
+    if (maxSupply && maxSupply > 0) {
+      if (maxSupply === 1) return 'legendary';
+      if (maxSupply <= 10) return 'epic';
+      if (maxSupply <= 100) return 'rare';
+      if (maxSupply <= 500) return 'uncommon';
+      return 'common';
+    }
+
+    // No supply data — fall back to weighted random as last resort
+    return this.getWeightedRandomRarity();
+  }
+
   public async fetchNFTImage(mintAddress: string): Promise<string | null> {
     try {
       const [metadataPDA] = PublicKey.findProgramAddressSync(
@@ -230,8 +239,6 @@ export class HeliusService {
       const accountInfo = await this.connection.getAccountInfo(metadataPDA);
       if (!accountInfo) return null;
 
-      // Note: Full on-chain parsing requires a buffer parser. 
-      // Helius usually provides the image in content.links.image.
       return null;
     } catch {
       return null;
@@ -246,16 +253,44 @@ export class HeliusService {
   }
 
   private processAttributes(rawAttributes: any[]): Attribute[] {
-    return (rawAttributes || []).map(attr => ({
-      trait: attr.trait_type || 'Unknown',
-      value: typeof attr.value === 'number' ? attr.value : 50,
-      max: 100,
-    })).filter(attr => attr.trait !== 'Unknown');
+    return (rawAttributes || []).map(attr => {
+      const val = attr.value;
+      const isNum = typeof val === 'number' && !isNaN(val);
+      return {
+        trait: attr.trait_type || 'Unknown',
+        value: isNum ? val : 0,
+        displayValue: String(val),
+        max: 100,
+      };
+    }).filter(attr => attr.trait !== 'Unknown');
   }
 
-  private extractNumber(name: string): string {
-    const match = name.match(/#(\d+)/) || name.match(/(\d+)$/);
-    return match ? match[1].padStart(3, '0') : '???';
+  // FIX: Also check attributes for edition/serial numbers
+  private extractNumber(name: string, attributes?: Attribute[]): string {
+    // 1. Check attributes first for explicit edition/number fields
+    if (attributes?.length) {
+      const numberAttr = attributes.find(a =>
+        ['edition', 'number', 'id', 'serial', 'token_id', '#'].includes(a.trait.toLowerCase())
+      );
+      if (numberAttr && numberAttr.displayValue) {
+        const num = numberAttr.displayValue.replace(/\D/g, '');
+        if (num) return num.padStart(3, '0');
+      }
+    }
+
+    // 2. # followed by digits in name
+    let match = name?.match(/#(\d+)/);
+    if (match) return match[1].padStart(3, '0');
+
+    // 3. Trailing digits
+    match = name?.match(/(\d+)$/);
+    if (match) return match[1].padStart(3, '0');
+
+    // 4. Any digits
+    match = name?.match(/\d+/);
+    if (match) return match[0].padStart(3, '0');
+
+    return '???';
   }
 
   private readonly MOVE_POOL: Record<PokemonType, string[]> = {
@@ -274,25 +309,20 @@ export class HeliusService {
   private deriveAbilities(attributes: Attribute[], type1: PokemonType, type2?: PokemonType): string[] {
     const abilities: string[] = [];
 
-    // 1. Highly specialized traits (Mastery)
     const masteries = attributes
       .filter(a => a.value > 90)
       .map(a => `${a.trait} Mastery`);
     abilities.push(...masteries);
 
-    // 2. Type-specific moves
     const typeMoves = [...(this.MOVE_POOL[type1] || [])];
     if (type2) typeMoves.push(...(this.MOVE_POOL[type2] || []));
 
-    // Deterministic selection based on attributes to keep it consistent
     const seed = attributes.reduce((acc, a) => acc + a.value, 0);
     const shuffled = [...typeMoves].sort((a, b) =>
       (seed % a.length) - (seed % b.length)
     );
 
     abilities.push(...shuffled);
-
-    // Ensure we always have 3 and they are unique
     return [...new Set(abilities)].slice(0, 3);
   }
 
@@ -305,7 +335,6 @@ export class HeliusService {
     let type2: PokemonType | undefined;
     const searchString = (name + attributes.map(a => a.trait).join('')).toLowerCase();
 
-    // 1. Keyword matching
     for (const [key, val] of Object.entries(typeMappings)) {
       if (searchString.includes(key.toLowerCase())) {
         if (type1 === 'normal') type1 = val;
@@ -313,13 +342,11 @@ export class HeliusService {
       }
     }
 
-    // 2. Color sampling fallback (if still normal or no type2)
     if (type1 === 'normal' && imageUrl) {
       const color = await colorService.getDominantColor(imageUrl);
       type1 = colorService.mapColorToType(color);
     }
 
-    // 3. Randomization fallback (last resort)
     if (type1 === 'normal') {
       const types: PokemonType[] = Object.values(typeMappings);
       type1 = types[Math.floor(Math.random() * types.length)];
@@ -367,7 +394,6 @@ export class HeliusService {
       else if (percentile <= 20) rarity = 'rare';
       else if (percentile <= 50) rarity = 'uncommon';
 
-      // Simple ranking within the fetched sample
       const sorted = collectionAssets
         .map(asset => ({
           id: asset.id,
@@ -381,6 +407,130 @@ export class HeliusService {
     } catch (e) {
       console.error('[HeliusService] Rarity calculation error:', e);
       return { rarity: nft.rarity, rank: nft.rank };
+    }
+  }
+
+  // FIX: Real floor price via Magic Eden free API (no key needed)
+  // Uses collection symbol from metadata (e.g. "degods", "okay_bears")
+  private async getMagicEdenFloorPrice(symbol: string): Promise<number> {
+    if (!symbol) return 0;
+
+    const normalizedSymbol = symbol.toLowerCase().replace(/\s+/g, '_');
+
+    // Check in-memory cache first
+    const cached = this.floorPriceCache.get(normalizedSymbol);
+    if (cached && Date.now() - cached.ts < this.FLOOR_CACHE_TTL) {
+      return cached.price;
+    }
+
+    try {
+      const response = await fetch(
+        `https://api-mainnet.magiceden.dev/v2/collections/${normalizedSymbol}/stats`,
+        { headers: { 'Accept': 'application/json' } }
+      );
+
+      if (!response.ok) {
+        console.warn(`[HeliusService] ME floor price not found for symbol: ${normalizedSymbol}`);
+        return 0;
+      }
+
+      const data = await response.json();
+      // Magic Eden returns floorPrice in lamports
+      const floorInSol = data?.floorPrice ? data.floorPrice / 1e9 : 0;
+
+      this.floorPriceCache.set(normalizedSymbol, { price: floorInSol, ts: Date.now() });
+      console.log(`[HeliusService] ME floor price for ${normalizedSymbol}: ${floorInSol} SOL`);
+      return floorInSol;
+    } catch (e) {
+      console.error(`[HeliusService] Magic Eden fetch error for ${normalizedSymbol}:`, e);
+      return 0;
+    }
+  }
+
+  // FIX: getMarketData now uses Magic Eden for floor price
+  public async getMarketData(
+    mintAddress: string,
+    collectionSymbol?: string
+  ): Promise<{ floorPrice: number; lastSale: number }> {
+    try {
+      console.log(`[HeliusService] Fetching market data for ${mintAddress}`);
+
+      // Fetch asset to get symbol if not provided
+      let symbol = collectionSymbol || '';
+
+      if (!symbol) {
+        const heliusResponse = await fetch(this.rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'market-' + Date.now(),
+            method: 'getAsset',
+            params: { id: mintAddress, displayOptions: { showCollectionMetadata: true } }
+          })
+        });
+
+        if (heliusResponse.ok) {
+          const heliusData = await heliusResponse.json();
+          const asset = heliusData.result;
+          // Try symbol from metadata, then collection metadata
+          symbol = asset?.content?.metadata?.symbol
+            || asset?.collection_metadata?.symbol
+            || '';
+        }
+      }
+
+      // Get floor price from Magic Eden using the symbol
+      const floorPrice = await this.getMagicEdenFloorPrice(symbol);
+
+      // Last sale: try Magic Eden activities endpoint (also free)
+      let lastSale = 0;
+      try {
+        const activityRes = await fetch(
+          `https://api-mainnet.magiceden.dev/v2/tokens/${mintAddress}/activities?offset=0&limit=1`,
+          { headers: { 'Accept': 'application/json' } }
+        );
+        if (activityRes.ok) {
+          const activities = await activityRes.json();
+          const lastSaleActivity = activities?.find((a: any) => a.type === 'buyNow');
+          if (lastSaleActivity?.price) {
+            lastSale = lastSaleActivity.price; // Already in SOL from ME v2
+          }
+        }
+      } catch (e) {
+        console.warn('[HeliusService] Could not fetch last sale activity:', e);
+      }
+
+      return { floorPrice, lastSale };
+    } catch (e) {
+      console.error('[HeliusService] Market data fetch error:', e);
+      return { floorPrice: 0, lastSale: 0 };
+    }
+  }
+
+  // FIX: enrichWithMarketData now passes the symbol to getMarketData
+  public async enrichWithMarketData(nfts: NFT[]) {
+    const collections = [...new Set(nfts.map(n => n.collection))].filter(c => c !== 'Unknown Collection');
+
+    for (const collectionId of collections) {
+      try {
+        const sampleNft = nfts.find(n => n.collection === collectionId);
+        if (!sampleNft) continue;
+
+        // Pass the symbol so we avoid a redundant getAsset call
+        const symbol = (sampleNft as any).symbol || '';
+        const mData = await this.getMarketData(sampleNft.mintAddress, symbol);
+
+        nfts.filter(n => n.collection === collectionId).forEach(nft => {
+          nft.floorPrice = mData.floorPrice;
+          // Only set lastSale on the specific NFT, not the whole collection
+        });
+
+        // Set lastSale on the sample NFT (most expensive lookup, skip for others)
+        sampleNft.lastSale = mData.lastSale;
+      } catch (e) {
+        console.error(`[HeliusService] Failed to enrich collection ${collectionId}:`, e);
+      }
     }
   }
 

@@ -43,6 +43,11 @@ const SFX = {
     // Victory sting for rare+ NFTs
     victory: require('../../assets/sfx/retro_misc_01.ogg'),
 
+    // Rarity-specific clicks
+    rare: require('../../assets/sfx/synth_beep_01.ogg'),
+    epic: require('../../assets/sfx/synth_beep_03.ogg'),
+    legendary: require('../../assets/sfx/retro_misc_01.ogg'),
+
     // Market tab coin
     coin: require('../../assets/sfx/coin.flac'),
 };
@@ -65,6 +70,7 @@ class AudioService {
     private musicSound: Sound | null = null;
     private currentTrackIndex: number = 0;
     private musicPlaying: boolean = false;
+    private isMusicLoading: boolean = false;
     private initialized: boolean = false;
 
     async init() {
@@ -72,18 +78,47 @@ class AudioService {
         try {
             console.log('[AudioService] Initializing audio mode...');
             if (!Audio || !Audio.setAudioModeAsync) {
-                console.error('[AudioService] Expo AV module not found or incorrectly linked!');
+                console.error('[AudioService] Expo AV module not found!');
                 return;
             }
             await Audio.setAudioModeAsync({
                 playsInSilentModeIOS: true,
-                staysActiveInBackground: false,
+                staysActiveInBackground: true,
                 shouldDuckAndroid: true,
+                playThroughEarpieceAndroid: false,
+                interruptionModeIOS: 1, // InterruptionModeIOS.DoNotMix
+                interruptionModeAndroid: 1, // InterruptionModeAndroid.DoNotMix
             });
             this.initialized = true;
             console.log('[AudioService] Initialization successful.');
         } catch (e) {
             console.warn('[AudioService] Init failed:', e);
+        }
+    }
+
+    async resumeMusic() {
+        if (this.musicSound && this.musicPlaying) {
+            try {
+                const status = await this.musicSound.getStatusAsync();
+                if (status.isLoaded && !status.isPlaying) {
+                    await this.musicSound.playAsync();
+                }
+            } catch (e) {
+                console.warn('[AudioService] Resume music failed:', e);
+            }
+        }
+    }
+
+    async pauseMusic() {
+        if (this.musicSound && this.musicPlaying) {
+            try {
+                const status = await this.musicSound.getStatusAsync();
+                if (status.isLoaded && status.isPlaying) {
+                    await this.musicSound.pauseAsync();
+                }
+            } catch (e) {
+                console.warn('[AudioService] Pause music failed:', e);
+            }
         }
     }
 
@@ -123,12 +158,17 @@ class AudioService {
         const source = pickRandom(SFX.scanLoop);
         try {
             await this.init();
+            if (!this.initialized) return;
+
+            console.log('[AudioService] Starting scan loop...');
             const { sound } = await Audio.Sound.createAsync(source, {
-                volume: 0.3,
+                volume: 0.6,
                 shouldPlay: true,
                 isLooping: true,
             });
+            await sound.playAsync();
             this.scanLoopSound = sound;
+            console.log('[AudioService] Scan loop playing.');
         } catch (e) {
             console.warn('[AudioService] Scan loop failed:', e);
         }
@@ -164,12 +204,20 @@ class AudioService {
         await this.playSound(pickRandom(SFX.buttonClick), 0.3);
     }
 
+    async playRarityClick(rarity: string) {
+        const r = rarity.toLowerCase();
+        if (r === 'legendary') await this.playSound(SFX.legendary, 0.6);
+        else if (r === 'epic') await this.playSound(SFX.epic, 0.5);
+        else if (r === 'rare') await this.playSound(SFX.rare, 0.5);
+        else await this.playButtonClick();
+    }
+
     async playVictory() {
         await this.playSound(SFX.victory, 0.5);
     }
 
     async playCoin() {
-        await this.playSound(SFX.coin, 0.4);
+        await this.playSound(SFX.coin, 0.8);
     }
 
     // === Music Methods ===
@@ -183,23 +231,52 @@ class AudioService {
     }
 
     async startMusic() {
+        if (this.isMusicLoading) {
+            console.log('[AudioService] Music already loading, skipping...');
+            return;
+        }
+
+        console.log('[AudioService] Starting music sequence...');
         await this.stopMusic();
+        this.isMusicLoading = true;
+
         try {
             await this.init();
+            if (!this.initialized) {
+                console.error('[AudioService] Not initialized, cannot start music.');
+                this.isMusicLoading = false;
+                return;
+            }
+
             const track = MUSIC_TRACKS[this.currentTrackIndex];
-            const { sound } = await Audio.Sound.createAsync(track.source, {
-                volume: 0.2,
-                shouldPlay: true,
-                isLooping: true,
-            });
+            console.log('[AudioService] Loading track:', track.name);
+
+            const { sound } = await Audio.Sound.createAsync(
+                track.source,
+                { volume: 0.8, shouldPlay: false, isLooping: true }
+            );
+
+            // Re-check if we were stopped while loading
+            if (!this.isMusicLoading) {
+                console.log('[AudioService] Stop called during load, unloading.');
+                await sound.unloadAsync().catch(() => { });
+                return;
+            }
+
+            console.log('[AudioService] Playback starting...');
+            await sound.playAsync();
             this.musicSound = sound;
             this.musicPlaying = true;
+            console.log('[AudioService] Music playing successfully.');
         } catch (e) {
             console.warn('[AudioService] Music start failed:', e);
+        } finally {
+            this.isMusicLoading = false;
         }
     }
 
     async stopMusic() {
+        this.isMusicLoading = false;
         if (this.musicSound) {
             try {
                 await this.musicSound.stopAsync();
